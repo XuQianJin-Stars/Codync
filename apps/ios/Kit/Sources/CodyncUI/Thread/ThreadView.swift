@@ -276,7 +276,7 @@ struct GroupIntroCard: View {
                     .foregroundStyle(Palette.secondary)
                     .multilineTextAlignment(.center)
             }
-            Text("Everyone answers in turn. @mention a bot to ask just that one.")
+            Text(L10n.tr("Everyone answers in turn. @mention a bot to ask just that one."))
                 .font(.subheadline)
                 .foregroundStyle(Palette.secondary)
                 .multilineTextAlignment(.center)
@@ -305,7 +305,7 @@ struct IntroCard: View {
                     .foregroundStyle(Palette.secondary)
                     .multilineTextAlignment(.center)
             }
-            Text("Tell it what you need. You'll get a notification when it's done or needs you.")
+            Text(L10n.tr("Tell it what you need. You'll get a notification when it's done or needs you."))
                 .font(.subheadline)
                 .foregroundStyle(Palette.secondary)
                 .multilineTextAlignment(.center)
@@ -395,10 +395,10 @@ extension ThreadView {
     var header: some View {
         // Like Grok Bot: the title pill holds the bot's actions; the corner is the computer.
         Menu {
-            Text("\(model.hostName) · \(model.connectionLabel)")
-            Button("Reconnect", systemImage: "arrow.clockwise") { model.restartStream() }
+            Text(L10n.tr("\(model.hostName) · \(model.connectionLabel)"))
+            Button(L10n.tr("Reconnect"), systemImage: "arrow.clockwise") { model.restartStream() }
             Divider()
-            Button("Details", systemImage: "info.circle", action: openDetails)
+            Button(L10n.tr("Details"), systemImage: "info.circle", action: openDetails)
             ForEach(menuItems) { item in
                 if item.divider { Divider() }
                 Button(role: item.destructive ? .destructive : nil, action: item.action) {
@@ -418,7 +418,7 @@ extension ThreadView {
     /// Opens the computer's screen; pulses while this bot is operating it (watch, then take over).
     private var computerButton: some View {
         let operating = model.screen?.agentBot == botId
-        return Button("Computer", systemImage: "desktopcomputer") {
+        return Button(L10n.tr("Computer"), systemImage: "desktopcomputer") {
             model.screenRequest = operating ? ScreenRequest(watching: botId) : ScreenRequest()
         }
         .symbolEffect(.pulse, options: .repeating, isActive: operating)

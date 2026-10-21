@@ -95,7 +95,7 @@ struct QuoteLine: View {
 
     var body: some View {
         Label {
-            Text("“\(MessagePreview.text(text))”").lineLimit(1)
+            Text(L10n.tr("“\(MessagePreview.text(text))”")).lineLimit(1)
         } icon: {
             Image(systemName: "text.bubble")
         }
@@ -147,25 +147,25 @@ struct UserBubble: View {
     @ViewBuilder private var status: some View {
         switch entry.data.status {
         case "sending":
-            Text("Sending…").font(.caption2).foregroundStyle(Palette.tertiary)
+            Text(L10n.tr("Sending…")).font(.caption2).foregroundStyle(Palette.tertiary)
         case "queued":
             Text(botWorking ? "Queued until this response finishes" : "Queued")
                 .font(.caption2)
                 .foregroundStyle(Palette.tertiary)
         case "failed":
             HStack(spacing: 10) {
-                Text("Failed to send").foregroundStyle(Palette.danger)
-                Button("Resend", systemImage: "arrow.clockwise") { model.retry(entry) }.labelStyle(.iconOnly).help("Resend")
-                Button("Delete", systemImage: "trash") { model.discard(entry) }.labelStyle(.iconOnly).help("Delete")
+                Text(L10n.tr("Failed to send")).foregroundStyle(Palette.danger)
+                Button(L10n.tr("Resend"), systemImage: "arrow.clockwise") { model.retry(entry) }.labelStyle(.iconOnly).help("Resend")
+                Button(L10n.tr("Delete"), systemImage: "trash") { model.discard(entry) }.labelStyle(.iconOnly).help("Delete")
             }
             .buttonStyle(.plain)
             .font(.caption2.bold())
         case "cancelled":
-            Text("Not sent — stopped").font(.caption2).foregroundStyle(Palette.tertiary)
+            Text(L10n.tr("Not sent — stopped")).font(.caption2).foregroundStyle(Palette.tertiary)
         case "waiting":
             HStack(spacing: 10) {
-                Text("Waiting for the computer to come online").foregroundStyle(Palette.tertiary)
-                Button("Cancel", systemImage: "xmark.circle") { model.cancelQueued(entry) }
+                Text(L10n.tr("Waiting for the computer to come online")).foregroundStyle(Palette.tertiary)
+                Button(L10n.tr("Cancel"), systemImage: "xmark.circle") { model.cancelQueued(entry) }
                     .labelStyle(.iconOnly)
                     .help("Don't send")
                     .accessibilityLabel("Don't send")
@@ -173,7 +173,7 @@ struct UserBubble: View {
             .buttonStyle(.plain)
             .font(.caption2)
         case "delivering":
-            Text("Delivered to the computer").font(.caption2).foregroundStyle(Palette.tertiary)
+            Text(L10n.tr("Delivered to the computer")).font(.caption2).foregroundStyle(Palette.tertiary)
         default:
                 EmptyView()
         }
@@ -239,7 +239,7 @@ struct NoticeRow: View {
                     Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(Palette.danger)
                 }
                 if entry.data.addFallback == true, let addFallback {
-                    Button("Add a fallback", action: addFallback).buttonStyle(.secondary)
+                    Button(L10n.tr("Add a fallback"), action: addFallback).buttonStyle(.secondary)
                 }
             }
             .padding(12)

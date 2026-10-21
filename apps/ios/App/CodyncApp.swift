@@ -13,6 +13,7 @@ struct CodyncApp: App {
     @State private var updates = AppUpdates()
     @Environment(\.scenePhase) private var scenePhase
     @AppStorage("onboardingCompleted") private var onboardingCompleted = false
+    @AppStorage(AppLanguage.storageKey) private var appLanguageRaw = AppLanguage.system.rawValue
     /// Cold launch with a computer to reach: the splash covers its connect and catch-up.
     @State private var launching = !AppStore.shared.accounts.computers.isEmpty
     init() {
@@ -34,6 +35,9 @@ struct CodyncApp: App {
                 })
                 .environment(updates)
                 .tint(Palette.accent)
+                .environment(\.locale, AppLanguage.locale(
+                    preference: AppLanguage(rawValue: appLanguageRaw) ?? .system,
+                    systemIsChinese: AppLanguage.systemIsChinese()))
                 // No scroll indicators anywhere in the app.
                 .scrollIndicators(.never)
                 .codyncSheet(isPresented: Binding(

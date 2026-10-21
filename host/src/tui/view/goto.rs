@@ -83,10 +83,12 @@ pub(super) fn goto(buf: &mut Buffer, area: Rect, app: &mut App, g: &super::super
                 }
                 if let Some((label, key, _)) = ACTIONS.iter().find(|x| x.2 == *a) {
                     put(buf, inner.x + 2, y, inner.width, label, if sel { t.bold } else { t.secondary }.patch(base));
+                    let language = super::super::l10n::language_title();
                     let hint = match (a, app.analytics) {
                         (Action::Analytics, Some(true)) => "on",
                         (Action::Analytics, Some(false)) => "off",
                         (Action::Analytics, None) => "",
+                        (Action::Language, _) => language.as_ref(),
                         _ => key,
                     };
                     rput(buf, inner.right(), y, hint, t.dim.patch(base));

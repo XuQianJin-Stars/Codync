@@ -21,7 +21,7 @@ struct RoutinesView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
-                Text("Routines")
+                Text(L10n.tr("Routines"))
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(Palette.text)
                     .padding(.leading, 2)

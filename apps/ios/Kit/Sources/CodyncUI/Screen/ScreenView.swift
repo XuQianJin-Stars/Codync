@@ -191,7 +191,7 @@ public struct ScreenView: View {
             }
         case .live, .closed:
             if screen?.input != true {
-                Text("View only. To allow control, open Codync → Settings → Computer access on the computer.")
+                Text(L10n.tr("View only. To allow control, open Codync → Settings → Computer access on the computer."))
                     .font(.caption).padding(12)
                     .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12))
                     .frame(maxHeight: .infinity, alignment: .bottom).padding(.bottom, 24)
@@ -230,7 +230,7 @@ private struct Overlay: View {
             }
             Text(text).font(.callout).multilineTextAlignment(.center).foregroundStyle(.secondary)
             if let retry {
-                Button("Try again", systemImage: "arrow.clockwise", action: retry)
+                Button(L10n.tr("Try again"), systemImage: "arrow.clockwise", action: retry)
                     .labelStyle(.iconOnly)
                     .buttonStyle(.secondary)
             }

@@ -139,8 +139,8 @@ private enum class ComputerOS { Mac, Linux }
                         Hint("or install with Homebrew")
                         CommandBlock("brew install leepokai/codync/codync-host\ncodync-host install", records = OutboundLink.InstallCommand)
                     }
-                    Text(if (shown == ComputerOS.Mac) "Open Codync and it sets up the host on its own."
-                        else "codync-host install keeps it running in the background.", style = Type.subheadline, color = Palette.secondary)
+                    Text(tr(if (shown == ComputerOS.Mac) "Open Codync and it sets up the host on its own."
+                        else "codync-host install keeps it running in the background."), style = Type.subheadline, color = Palette.secondary)
                     Hint("Every install option")
                     CommandBlock("https://www.codync.dev/#install", records = OutboundLink.InstallCommand)
                 }
@@ -166,7 +166,7 @@ private enum class ComputerOS { Mac, Linux }
 }
 
 /** A small label above a `CommandBlock`. */
-@Composable private fun Hint(text: String) = Text(text, style = Type.footnote, color = Palette.secondary)
+@Composable private fun Hint(text: String) = Text(tr(text), style = Type.footnote, color = Palette.secondary)
 
 /** A terminal command with a copy button; copying it counts as opening `records`. */
 @Composable private fun CommandBlock(command: String, records: OutboundLink? = null) {

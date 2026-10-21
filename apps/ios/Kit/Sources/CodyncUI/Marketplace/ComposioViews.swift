@@ -58,7 +58,7 @@ struct ComposioSection: View {
                     }
                 }
                 if !loading, apps.hasHiddenItems, status?.configured == true {
-                    Button("Load more apps") {
+                    Button(L10n.tr("Load more apps")) {
                         withAnimation(Motion.fade) { apps.revealMore() }
                     }
                     .buttonStyle(SecondaryButtonStyle())
@@ -68,7 +68,7 @@ struct ComposioSection: View {
                     Text(error).font(.footnote).foregroundStyle(Palette.danger)
                 }
                 if status?.configured == true {
-                    Button("Composio settings", systemImage: "key") { withAnimation(Motion.layout) { settingUp = true } }
+                    Button(L10n.tr("Composio settings"), systemImage: "key") { withAnimation(Motion.layout) { settingUp = true } }
                         .labelStyle(.titleAndIcon)
                         .buttonStyle(.plain)
                         .font(.footnote)
@@ -168,7 +168,7 @@ struct ComposioKeySheet: View {
             }
             if status?.configured == true {
                 CardSection(footer: "Bots lose the apps you connected until you add a key again.") {
-                    Button("Remove key", role: .destructive) { save("") }
+                    Button(L10n.tr("Remove key"), role: .destructive) { save("") }
                         .buttonStyle(.plain)
                         .foregroundStyle(Palette.danger)
                 }
@@ -246,7 +246,7 @@ struct ComposioConnectSheet: View {
             }
             if connected {
                 CardSection(footer: "Turn \(app.name) on for a bot in the bot's settings, under Connectors.") {
-                    Label("Connected", systemImage: "checkmark.circle.fill").foregroundStyle(Palette.added)
+                    Label(L10n.tr("Connected"), systemImage: "checkmark.circle.fill").foregroundStyle(Palette.added)
                 }
             } else if let plan, plan.status == "needsFields" {
                 CardSection(footer: "Sent to Composio, which keeps it for \(app.name).") {
@@ -269,19 +269,19 @@ struct ComposioConnectSheet: View {
             } else if let plan, plan.status == "redirect" {
                 CardSection(footer: "Sign in on the page that opened. This updates by itself when you're done.") {
                     if let url = plan.url.flatMap(URL.init(string:)) {
-                        Button("Open the sign-in page", systemImage: "safari") { openURL(url) }
+                        Button(L10n.tr("Open the sign-in page"), systemImage: "safari") { openURL(url) }
                             .buttonStyle(.secondary)
                     }
                     HStack(spacing: 8) {
                         Spinner()
-                        Text("Waiting for you to finish signing in…").foregroundStyle(Palette.secondary)
+                        Text(L10n.tr("Waiting for you to finish signing in…")).foregroundStyle(Palette.secondary)
                     }
                 }
             } else if error == nil {
                 CardSection {
                     HStack(spacing: 8) {
                         Spinner()
-                        Text("Asking Composio…").foregroundStyle(Palette.secondary)
+                        Text(L10n.tr("Asking Composio…")).foregroundStyle(Palette.secondary)
                     }
                 }
             }

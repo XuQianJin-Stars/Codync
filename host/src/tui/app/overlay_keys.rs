@@ -25,7 +25,13 @@ impl App {
         let mut items: Vec<GotoItem> = bots.into_iter().map(|b| GotoItem::Bot(b.id.clone())).collect();
         if want.is_none() {
             items.extend(
-                ACTIONS.iter().filter(|(label, _, _)| fuzzy(q, &[label])).map(|(_, _, a)| GotoItem::Action(*a)),
+                ACTIONS
+                    .iter()
+                    .filter(|(label, _, _)| {
+                        let translated = super::super::l10n::tr(label);
+                        fuzzy(q, &[label, translated.as_ref()])
+                    })
+                    .map(|(_, _, a)| GotoItem::Action(*a)),
             );
         }
         items
@@ -44,6 +50,10 @@ impl App {
             Action::CheckUpdate => self.call("checkHostUpdate", json!({}), After::Update),
             Action::Analytics => self.toggle_analytics(),
             Action::AboutAnalytics => self.overlays.push(Overlay::Analytics(AnalyticsSheet::default())),
+            Action::Language => {
+                let title = super::super::l10n::cycle_language();
+                self.flash(title.as_ref());
+            }
             Action::Keys => self.overlays.push(Overlay::Help(Editor::default())),
         }
     }

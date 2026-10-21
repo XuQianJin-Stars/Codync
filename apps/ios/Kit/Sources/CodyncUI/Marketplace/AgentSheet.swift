@@ -16,13 +16,13 @@ struct NodeNotice: View {
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 10) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Node.js isn't on \(model.hostName)").font(.subheadline.weight(.semibold)).foregroundStyle(Palette.text)
-                    Text("Some agents need it to run. Codync can add a copy just for them.")
+                    Text(L10n.tr("Node.js isn't on \(model.hostName)")).font(.subheadline.weight(.semibold)).foregroundStyle(Palette.text)
+                    Text(L10n.tr("Some agents need it to run. Codync can add a copy just for them."))
                         .font(.caption)
                         .foregroundStyle(Palette.secondary)
                 }
                 // Compact on a phone: under the text, so the text keeps the row's width.
-                Button("Add Node.js", action: add)
+                Button(L10n.tr("Add Node.js"), action: add)
                     .buttonStyle(.plain)
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(Palette.onAccent)
@@ -160,7 +160,7 @@ struct AgentSheet: View {
                 if checking {
                     ThinkingOrb(state: .connecting, size: 16, color: Palette.secondary)
                 } else {
-                    Button("Check again", systemImage: "arrow.clockwise") { Task { await check() } }
+                    Button(L10n.tr("Check again"), systemImage: "arrow.clockwise") { Task { await check() } }
                         .labelStyle(.iconOnly)
                         .buttonStyle(.plain)
                         .foregroundStyle(Palette.secondary)
@@ -327,7 +327,7 @@ private struct AgentKeysForm: View {
                 }
                 VStack(alignment: .leading, spacing: 6) {
                     if let d = method.description { Text(d) }
-                    Text("Saved on \(model.hostName) only and given to \(backend.name) when it starts.")
+                    Text(L10n.tr("Saved on \(model.hostName) only and given to \(backend.name) when it starts."))
                     if let link = method.link, let url = URL(string: link) {
                         WebLink("Get a key", url: url)
                     }
@@ -338,7 +338,7 @@ private struct AgentKeysForm: View {
             }
             if !saved.isEmpty {
                 CardSection {
-                    Button("Remove saved keys", role: .destructive) {
+                    Button(L10n.tr("Remove saved keys"), role: .destructive) {
                         save(Dictionary(uniqueKeysWithValues: vars.map { ($0.name, "") }))
                     }
                     .buttonStyle(.plain)
@@ -385,7 +385,7 @@ private struct SetupStepRow: View {
                 if done {
                     Image(systemName: "checkmark").font(.caption.weight(.bold)).foregroundStyle(Palette.onAccent)
                 } else {
-                    Text("\(number)").font(.caption.weight(.semibold)).foregroundStyle(Palette.secondary)
+                    Text(L10n.tr("\(number)")).font(.caption.weight(.semibold)).foregroundStyle(Palette.secondary)
                 }
             }
             .frame(width: 26, height: 26)

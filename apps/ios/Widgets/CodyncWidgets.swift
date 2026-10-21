@@ -406,7 +406,7 @@ struct UsageWidgetView: View {
 
     private func hero(_ item: (provider: String, window: UsageWindow)) -> some View {
         VStack(alignment: .leading, spacing: 2) {
-            Text("\(item.provider) · \(item.window.label)").font(.caption).foregroundStyle(Palette.secondary).lineLimit(1)
+            Text("\(item.provider) · \(L10n.tr(item.window.title))").font(.caption).foregroundStyle(Palette.secondary).lineLimit(1)
             Text(percent(item.window))
                 .font(.system(size: 34, weight: .semibold, design: .rounded))
                 .monospacedDigit()
@@ -419,7 +419,7 @@ struct UsageWidgetView: View {
     private func bar(_ item: (provider: String, window: UsageWindow)) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack {
-                Text("\(item.provider) \(item.window.label)").lineLimit(1)
+                Text("\(item.provider) \(L10n.tr(item.window.title))").lineLimit(1)
                 Spacer(minLength: 4)
                 Text(percent(item.window)).monospacedDigit()
             }
@@ -433,9 +433,9 @@ struct UsageWidgetView: View {
 
     @ViewBuilder private func resetLine(_ w: UsageWindow) -> some View {
         if let date = w.resetDate, date > entry.date {
-            Text("resets \(Text(date, style: .relative))")
+            Text(L10n.resetLine("resets \(RelativeTime.until(date, now: entry.date))"))
         } else if let text = w.resetDescription {
-            Text(text)
+            Text(L10n.resetLine(text))
         } else {
             Text(" ")
         }

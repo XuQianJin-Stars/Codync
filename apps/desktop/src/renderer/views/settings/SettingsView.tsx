@@ -7,6 +7,7 @@ import { useDismiss } from '../../components/Overlay'
 import { HStack, IconSlot, VStack } from '../../components/Stack'
 import { Text } from '../../components/Text'
 import { useModel } from '../../lib/observable'
+import { languageTitle, systemIsChinese, type AppLanguage } from '../../lib/l10n'
 import { DEFAULT_TEXT_SIZE, prefs, TEXT_SIZES, usePref } from '../../lib/prefs'
 import { useAccount } from '../../store/account'
 import { useScreenViewed } from '../../store/analytics'
@@ -112,6 +113,8 @@ function PageContent({ page }: { page: SettingsPage }) {
 function GeneralSettings() {
   const account = useAccount()
   const [textSize, setTextSize] = usePref(prefs.textSize)
+  const [language, setLanguage] = usePref(prefs.appLanguage)
+  const systemChinese = systemIsChinese()
   const [usageIconStyle, setUsageIconStyle] = usePref(prefs.usageIconStyle)
   const [compact, setCompact] = usePref(prefs.sidebarCompact)
   const [showInDock, setShowInDock] = useState(true)
@@ -164,6 +167,25 @@ function GeneralSettings() {
         <Switch on={compact} onChange={setCompact}>
           Compact sidebar
         </Switch>
+      </CardSection>
+      <CardSection
+        title="Language"
+        footer={
+          systemChinese
+            ? 'System language is Chinese. "Follow system" matches this computer. You can switch this app to English.'
+            : 'System language is English. "Follow system" matches this computer. You can switch this app to Chinese.'
+        }
+      >
+        <ValueRow label="App language">
+          <ChoicePicker
+            selection={language}
+            options={(['system', 'zh', 'en'] as const satisfies readonly AppLanguage[]).map((id) => ({
+              id,
+              label: languageTitle(id, language, systemChinese),
+            }))}
+            onChange={setLanguage}
+          />
+        </ValueRow>
       </CardSection>
       <CardSection title="System">
         {window.codync.platform === 'darwin' ? <Switch on={showInDock} onChange={(on) => void window.codync.app.setShowInDock(on).then(setShowInDock)}>Show in Dock</Switch> : null}

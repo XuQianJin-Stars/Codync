@@ -394,7 +394,7 @@ struct JumpToLatest: View {
     var body: some View {
         ZStack {
             if visible {
-                Button("Jump to latest", systemImage: "arrow.down", action: action)
+                Button(L10n.tr("Jump to latest"), systemImage: "arrow.down", action: action)
                     .labelStyle(.iconOnly)
                     .buttonStyle(IconButtonStyle())
                     .frosted(in: Circle())

@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useId, useLayoutEffect, useRef, useState, type ReactElement, type ReactNode, type RefObject } from 'react'
 import { createPortal } from 'react-dom'
 import { reduceMotion } from '../lib/theme'
+import { useTr } from '../lib/use-language'
 import { Icon } from './Icon'
 import { HStack, VStack } from './Stack'
 import { Text } from './Text'
@@ -151,6 +152,7 @@ export function Dialog({ open, title, message, actions, cancel = 'Cancel', onClo
   onClose: () => void
 }) {
   const { mounted, shown } = usePresence(open, 120)
+  const tr = useTr()
   const last = useRef({ title, message, actions })
   const layer = useRef<HTMLDivElement>(null)
   const id = useId()
@@ -170,7 +172,7 @@ export function Dialog({ open, title, message, actions, cancel = 'Cancel', onClo
         <div className="dialog-buttons">
           {cancel !== null ? (
             <button className="dialog-button" data-autofocus onClick={onClose}>
-              {cancel}
+              {tr(cancel)}
             </button>
           ) : null}
           {shownContent.actions.map((a) => (
@@ -182,7 +184,7 @@ export function Dialog({ open, title, message, actions, cancel = 'Cancel', onClo
                 a.action()
               }}
             >
-              {a.title}
+              {tr(a.title)}
             </button>
           ))}
         </div>

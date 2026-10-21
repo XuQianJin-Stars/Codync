@@ -3,6 +3,7 @@ import type { TraySummary } from '@shared/ipc'
 import { isGroup, isWorking, needsInput, folderName, type Bot, type UsageWindow } from '@shared/models'
 import { drawCharacter, moodOf } from '../components/Avatar'
 import { useModels } from '../lib/observable'
+import { resetLine, systemIsChinese, translate } from '../lib/l10n'
 import { prefs, usePref } from '../lib/prefs'
 import { avatarColor, isDark, palette } from '../lib/theme'
 import type { AppModel } from '../store/app-model'
@@ -75,8 +76,12 @@ function barIcon(providerId: string, window: UsageWindow) {
 }
 
 function usageLine(w: UsageWindow) {
+  const preference = prefs.appLanguage.get()
+  const systemChinese = systemIsChinese()
+  const title = translate(windowTitle(w), preference, systemChinese)
   const reset = resetDate(w)
-  return `${windowTitle(w)} · ${Math.round(w.percent)}%${reset ? ` · resets in ${untilText(reset)}` : ''}`
+  const spoken = reset ? resetLine(`resets in ${untilText(reset)}`, preference, systemChinese) : ''
+  return `${title} · ${Math.round(w.percent)}%${spoken ? ` · ${spoken}` : ''}`
 }
 
 /** Sends what the menu bar shows whenever the stores change. */

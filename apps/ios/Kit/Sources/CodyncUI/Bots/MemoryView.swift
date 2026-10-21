@@ -39,7 +39,7 @@ struct MemoryCard: View {
             }), options: sections(memory?.view))
             CardSection {
                 if let memory { contents(memory) }
-                else { Text("Loading memory…").foregroundStyle(Palette.secondary) }
+                else { Text(L10n.tr("Loading memory…")).foregroundStyle(Palette.secondary) }
             }
         }
         .tracked(.screenViewed(.memory))
@@ -70,7 +70,7 @@ struct MemoryCard: View {
             case .harness: harness(view.projectMemory)
             }
         } else if memory.error == nil {
-            Text("Loading memory…").foregroundStyle(Palette.secondary)
+            Text(L10n.tr("Loading memory…")).foregroundStyle(Palette.secondary)
         }
     }
 
@@ -83,13 +83,15 @@ struct MemoryCard: View {
         let shared = section == .yours
         let layer = shared ? view.yours : view.bot
         if shared, let bot {
-            Toggle("Use what your bots share", isOn: Binding(get: { bot.sharedMemory ?? view.shared }, set: { host.setSharedMemory(bot, $0) }))
+            Toggle(isOn: Binding(get: { bot.sharedMemory ?? view.shared }, set: { host.setSharedMemory(bot, $0) })) {
+                Text(L10n.tr("Use what your bots share"))
+            }
                 .toggleStyle(.codync)
         }
         if !shared, let bot, let on = bot.harnessMemory {
             let name = host.backendName(bot.backend)
             HStack(spacing: 4) {
-                Text("\(name)'s own memory").lineLimit(1).layoutPriority(1)
+                Text(L10n.tr("\(name)'s own memory")).lineLimit(1).layoutPriority(1)
                 IconButton("About \(name)'s own memory", systemImage: "info.circle") {
                     withAnimation(Motion.layout) { info = .harness }
                 }
@@ -124,7 +126,7 @@ struct MemoryCard: View {
     /// What dreaming did.
     @ViewBuilder private func dreams(_ runs: [DreamRun]) -> some View {
         HStack(alignment: .top, spacing: 8) {
-            Text("Between chats the bot tidies its memory from your own words.")
+            Text(L10n.tr("Between chats the bot tidies its memory from your own words."))
                 .font(.footnote).foregroundStyle(Palette.secondary)
                 .frame(maxWidth: .infinity, alignment: .leading)
             IconButton("About dreaming", systemImage: "info.circle") {
@@ -137,8 +139,8 @@ struct MemoryCard: View {
                 Text("\(Date(milliseconds: run.at).formatted(.relative(presentation: .named)))\(run.undone ? " · undone" : "")")
                     .fontWeight(.semibold)
                 let limit = lines(.dream(run.id))
-                ForEach(run.added, id: \.id) { Text("+ \($0.text)").foregroundStyle(Palette.added).lineLimit(limit) }
-                ForEach(run.archived, id: \.id) { Text("− \($0.text)").foregroundStyle(Palette.removed).lineLimit(limit) }
+                ForEach(run.added, id: \.id) { Text(L10n.tr("+ \($0.text)")).foregroundStyle(Palette.added).lineLimit(limit) }
+                ForEach(run.archived, id: \.id) { Text(L10n.tr("− \($0.text)")).foregroundStyle(Palette.removed).lineLimit(limit) }
                 ForEach(run.files ?? [], id: \.version) { Label("Added to \($0.name)", systemImage: "doc.text").foregroundStyle(Palette.secondary) }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -150,7 +152,7 @@ struct MemoryCard: View {
 
     @ViewBuilder private func harness(_ project: MemoryView.Project?) -> some View {
         if let project {
-            Text("Claude Code's own notes, read-only here.")
+            Text(L10n.tr("Claude Code's own notes, read-only here."))
                 .font(.footnote).foregroundStyle(Palette.secondary)
             Text(project.path).font(.caption).foregroundStyle(Palette.tertiary).textSelection(.enabled)
             if project.text.isEmpty { empty("brain", "Nothing yet. Claude Code's notes show up here once it saves some.") }

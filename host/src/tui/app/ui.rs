@@ -57,10 +57,11 @@ pub enum Action {
     CheckUpdate,
     Analytics,
     AboutAnalytics,
+    Language,
     Keys,
 }
 
-pub const ACTIONS: [(&str, &str, Action); 12] = [
+pub const ACTIONS: [(&str, &str, Action); 13] = [
     ("New bot…", "n", Action::NewBot),
     ("New group chat…", "m", Action::NewGroup),
     ("Extensions: agents, connectors, skills…", "A", Action::Market),
@@ -72,6 +73,7 @@ pub const ACTIONS: [(&str, &str, Action); 12] = [
     ("Check for updates", "", Action::CheckUpdate),
     ("Share usage analytics", "", Action::Analytics),
     ("About usage analytics…", "", Action::AboutAnalytics),
+    ("App language…", "", Action::Language),
     ("Keys", "?", Action::Keys),
 ];
 

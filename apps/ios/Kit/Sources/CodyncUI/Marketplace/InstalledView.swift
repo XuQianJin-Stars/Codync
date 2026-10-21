@@ -22,7 +22,7 @@ struct InstalledView: View {
             ScreenHeader {
                 BackButton(action: back).keyboardShortcut(.cancelAction)
             } title: {
-                Text("Connectors & skills").font(.body.weight(.semibold)).foregroundStyle(Palette.text)
+                Text(L10n.tr("Connectors & skills")).font(.body.weight(.semibold)).foregroundStyle(Palette.text)
             } trailing: {
                 EmptyView()
             }
@@ -50,7 +50,7 @@ struct InstalledView: View {
                             if signingIn == c.id {
                                 Spinner()
                             } else if c.needsSignIn {
-                                Button("Sign in") { signIn(c.id) }
+                                Button(L10n.tr("Sign in")) { signIn(c.id) }
                                     .buttonStyle(PrimaryButtonStyle())
                                     .controlSize(.small)
                             }

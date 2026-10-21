@@ -35,7 +35,7 @@ struct RoutineWebhookPanel: View {
             } else if let error {
                 Text(error).font(.caption).foregroundStyle(Palette.danger).padding(.leading, 4)
             } else {
-                Text("Loading webhook…").font(.caption).foregroundStyle(Palette.secondary).padding(.leading, 4)
+                Text(L10n.tr("Loading webhook…")).font(.caption).foregroundStyle(Palette.secondary).padding(.leading, 4)
             }
         }
         .task(id: routineId) { await load(rotate: false) }

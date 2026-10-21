@@ -100,13 +100,13 @@ public struct NewGroupView: View {
             let bots = model.roster.filter { !$0.isGroup }
             VStack(spacing: 14) {
                 if bots.isEmpty {
-                    Text("No bots yet. Create a bot first.").font(.subheadline).foregroundStyle(Palette.secondary)
+                    Text(L10n.tr("No bots yet. Create a bot first.")).font(.subheadline).foregroundStyle(Palette.secondary)
                 } else {
                     WrapLayout(spacing: 8) {
                         ForEach(bots) { tile($0) }
                     }
                 }
-                Text("Everyone answers in turn unless you @mention someone.")
+                Text(L10n.tr("Everyone answers in turn unless you @mention someone."))
                     .font(.caption)
                     .foregroundStyle(Palette.tertiary)
                     .multilineTextAlignment(.center)

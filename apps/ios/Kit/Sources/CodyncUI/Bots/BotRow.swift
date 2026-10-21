@@ -38,7 +38,7 @@ public struct BotRow: View {
                     preview
                     Spacer(minLength: 4)
                     if bot.unread > 0 {
-                        Text("\(bot.unread)")
+                        Text(L10n.tr("\(bot.unread)"))
                             .font(.caption2.bold())
                             .foregroundStyle(Palette.onAccent)
                             .padding(.horizontal, 6)

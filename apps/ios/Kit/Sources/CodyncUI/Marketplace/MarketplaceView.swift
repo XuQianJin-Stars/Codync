@@ -105,7 +105,7 @@ public struct MarketplaceView: View {
                         }
                         .padding(.horizontal, -24)
                         if agents.count > agentLimit {
-                            Button("Load more agents") {
+                            Button(L10n.tr("Load more agents")) {
                                 withAnimation(Motion.fade) { agentLimit += 10 }
                             }
                             .buttonStyle(SecondaryButtonStyle())
@@ -160,7 +160,7 @@ public struct MarketplaceView: View {
                     }
                 }
                 Button { withAnimation(Motion.layout) { showCredentials = true } } label: {
-                    Label("Credentials", systemImage: "lock.shield")
+                    Label(L10n.tr("Credentials"), systemImage: "lock.shield")
                 }
                 .buttonStyle(SecondaryButtonStyle())
                 MarketSection(title: "Make your own") {
@@ -180,7 +180,7 @@ public struct MarketplaceView: View {
                 if let error {
                     Text(error).font(.footnote).foregroundStyle(Palette.danger)
                 }
-                Text("Connectors come from the official MCP Registry, apps through Composio, skills from Anthropic, agents from the ACP registry. Everything installs on \(model.hostName).")
+                Text(L10n.tr("Connectors come from the official MCP Registry, apps through Composio, skills from Anthropic, agents from the ACP registry. Everything installs on \(model.hostName)."))
                     .font(.footnote)
                     .foregroundStyle(Palette.tertiary)
             }
@@ -204,7 +204,7 @@ public struct MarketplaceView: View {
             HStack(spacing: 10) {
                 ComputerBadge(model.computer, size: 32)
                 VStack(alignment: .leading, spacing: 0) {
-                    Text("Extensions")
+                    Text(L10n.tr("Extensions"))
                         .font(.title2.weight(.semibold))
                         .foregroundStyle(Palette.text)
                     if let computer, computers.count > 1 {
@@ -242,8 +242,8 @@ public struct MarketplaceView: View {
                             }
                         }
                         VStack(alignment: .leading, spacing: 2) {
-                            Text("\(installedCount) installed")
-                            Text("Connectors & skills").font(.caption)
+                            Text(L10n.tr("\(installedCount) installed"))
+                            Text(L10n.tr("Connectors & skills")).font(.caption)
                         }
                         .foregroundStyle(Palette.secondary)
                         Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(Palette.tertiary)

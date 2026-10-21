@@ -17,7 +17,7 @@ public struct TraceView: View {
             ScrollView {
             LazyVStack(alignment: .leading, spacing: 22) {
                 if turns.isEmpty {
-                    Text("Nothing yet.").foregroundStyle(Palette.tertiary)
+                    Text(L10n.tr("Nothing yet.")).foregroundStyle(Palette.tertiary)
                 }
                 ForEach(turns, id: \.key) { turn, entries in
                     VStack(alignment: .leading, spacing: 8) {
@@ -62,7 +62,7 @@ private struct TraceRow: View {
             Disclosure(isExpanded: $expanded) {
                 Text(d.text ?? "").font(.footnote).foregroundStyle(Palette.secondary).textSelection(.enabled)
             } label: {
-                Label { Text("Thinking") } icon: {
+                Label { Text(L10n.tr("Thinking")) } icon: {
                     ThinkingOrb(size: 16, color: Palette.secondary, animated: false)
                 }.font(.subheadline).foregroundStyle(Palette.secondary)
             }
@@ -70,7 +70,7 @@ private struct TraceRow: View {
             ToolRow(data: d)
         case "plan":
             VStack(alignment: .leading, spacing: 6) {
-                Label("Plan", systemImage: "checklist").font(.subheadline.bold())
+                Label(L10n.tr("Plan"), systemImage: "checklist").font(.subheadline.bold())
                 ForEach(Array((d.entries ?? []).enumerated()), id: \.offset) { _, item in
                     Label {
                         Text(item.content).strikethrough(item.status == "completed").foregroundStyle(Palette.text)

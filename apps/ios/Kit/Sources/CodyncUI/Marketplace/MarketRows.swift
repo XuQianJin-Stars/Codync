@@ -85,7 +85,7 @@ struct MarketRow<Icon: View>: View {
             if busy {
                 ThinkingOrb(size: 18, color: Palette.secondary).frame(width: 60)
             } else if added {
-                Label("Added", systemImage: "checkmark")
+                Label(L10n.tr("Added"), systemImage: "checkmark")
                     .labelStyle(.iconOnly)
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(Palette.secondary)

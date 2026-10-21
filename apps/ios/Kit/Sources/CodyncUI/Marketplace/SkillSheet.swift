@@ -60,7 +60,7 @@ struct SkillSheet: View {
                 CardSection("Instructions", footer: added ? "Bots read these before using the skill." : "Add it to let bots use these instructions.") {
                     if let markdown {
                         if markdown.isEmpty {
-                            Text("No instructions.").foregroundStyle(Palette.secondary)
+                            Text(L10n.tr("No instructions.")).foregroundStyle(Palette.secondary)
                         } else {
                             MarkdownText(markdown)
                         }
