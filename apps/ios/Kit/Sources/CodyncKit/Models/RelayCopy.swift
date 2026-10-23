@@ -55,4 +55,9 @@ public enum RelayCopy {
             "Connects on Wi-Fi, over Tailscale, or from anywhere through Private relay (\($0)), on its own. End-to-end encrypted."
         } ?? "Connects on Wi-Fi, over Tailscale, or from anywhere through Cloudflare, on its own. End-to-end encrypted."
     }
+
+    /// The pairing page's line. Parsing stays here so a view only renders the sentence.
+    public static func pairing(pasted: String) -> String {
+        pairing(cloud: Pairing(string: pasted)?.computer.cloud)
+    }
 }

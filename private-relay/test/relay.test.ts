@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
-import { mkdtempSync, readFileSync } from 'node:fs'
+import { copyFileSync, mkdtempSync, readFileSync } from 'node:fs'
+import { request as httpRequest } from 'node:http'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
@@ -241,6 +242,109 @@ test('mailbox put is idempotent, refused while the host is ready, and delivered 
     device.close()
   } finally {
     await server.close()
+  }
+})
+
+test('a null message closes only the socket that sent it', async () => {
+  const { server } = await relay()
+  try {
+    await register(server)
+    const host = await hostSocket(server)
+    host.send(signedAcl(1, [{ dk: vectors.keys.deviceSignPub, grant: null }], []))
+    assert.equal(JSON.parse(await nextMessage(host)).t, 'acl.ok')
+    const device = await deviceSocket(server)
+    await nextMessage(device)
+    const other = await deviceSocket(server)
+    await nextMessage(other)
+
+    const closed = nextClose(device)
+    device.send('null')
+    assert.equal(await closed, 4002)
+
+    host.send('null')
+    host.send('true')
+    host.send('[]')
+    const hostPong = nextMessage(host)
+    host.send('{"t":"ping","n":1}')
+    assert.equal(await hostPong, PONG)
+    const devicePong = nextMessage(other)
+    other.send('{"t":"ping","n":1}')
+    assert.equal(await devicePong, PONG)
+    assert.equal((await fetch(`${server.url}/health`)).status, 200)
+    host.close()
+    other.close()
+  } finally {
+    await server.close()
+  }
+})
+
+test('a body over the limit is refused before it is trusted', async () => {
+  const { server } = await relay()
+  try {
+    const over = Buffer.alloc(64 * 1024 + 1, 0x61)
+    const declared = await fetch(`${server.url}/v1/host/register`, { method: 'POST', body: over })
+    assert.equal(declared.status, 400)
+    assert.equal(((await declared.json()) as { error: { code: string } }).error.code, 'badRequest')
+    const chunked = await new Promise<number>((resolve, reject) => {
+      const url = new URL(`${server.url}/v1/host/register`)
+      const req = httpRequest(
+        { hostname: url.hostname, port: url.port, path: url.pathname, method: 'POST', headers: { 'content-type': 'application/json' } },
+        (res) => {
+          res.resume()
+          res.on('end', () => resolve(res.statusCode ?? 0))
+        },
+      )
+      req.on('error', reject)
+      req.write(over)
+      req.end()
+    })
+    assert.equal(chunked, 400)
+  } finally {
+    await server.close()
+  }
+})
+
+test('a restart between delivery and acknowledgment sends the item again', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'codync-private-relay-'))
+  const file = join(dir, 'relay.sqlite')
+  const store = new RelayStore(file)
+  const server = await startRelay({ store, port: 0 })
+  const nonce = vectors.mailbox.clientNonce
+  try {
+    await register(server)
+    const host = await hostSocket(server)
+    host.send(signedAcl(1, [{ dk: vectors.keys.deviceSignPub, grant: null }], []))
+    assert.equal(JSON.parse(await nextMessage(host)).t, 'acl.ok')
+    const device = await deviceSocket(server)
+    await nextMessage(device)
+    device.send(JSON.stringify({ t: 'mbox.put', nonce, d: vectors.mailbox.blob }))
+    assert.equal(JSON.parse(await nextMessage(device)).state, 'queued')
+    host.send(JSON.stringify({ t: 'ready' }))
+    assert.equal((JSON.parse(await nextMessage(host)) as { t: string }).t, 'open')
+    const item = JSON.parse(await nextMessage(host)) as { t: string; nonce: string }
+    assert.equal(item.t, 'mbox.item')
+    assert.equal(item.nonce, nonce)
+    assert.equal(store.mailboxState(vectors.keys.computerId, vectors.keys.deviceSignPub, nonce), 'delivering')
+    store.db.exec('PRAGMA wal_checkpoint(TRUNCATE)')
+    copyFileSync(file, join(dir, 'crash.sqlite'))
+    host.close()
+    device.close()
+  } finally {
+    await server.close()
+  }
+
+  const recovered = new RelayStore(join(dir, 'crash.sqlite'))
+  const again = await startRelay({ store: recovered, port: 0 })
+  try {
+    assert.equal(recovered.mailboxState(vectors.keys.computerId, vectors.keys.deviceSignPub, nonce), 'queued')
+    const host = await hostSocket(again)
+    host.send(JSON.stringify({ t: 'ready' }))
+    const item = JSON.parse(await nextMessage(host)) as { t: string; nonce: string }
+    assert.equal(item.t, 'mbox.item')
+    assert.equal(item.nonce, nonce)
+    host.close()
+  } finally {
+    await again.close()
   }
 })
 

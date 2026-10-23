@@ -21,4 +21,19 @@ struct RelayCopyTests {
         #expect(RelayCopy.detailSuffix(route: .relay, cloud: cloud) == " · Private relay (relay.example.com)")
         #expect(RelayCopy.pairing(cloud: cloud).contains("Private relay (relay.example.com)"))
     }
+
+    @Test func aPastedLinkNamesItsRelay() {
+        let v = Vectors.shared
+        var comps = URLComponents(string: "codync://pair")!
+        comps.queryItems = [
+            URLQueryItem(name: "v", value: "3"),
+            URLQueryItem(name: "id", value: v.str("keys", "computerId")),
+            URLQueryItem(name: "sk", value: v.str("keys", "hostSignPub")),
+            URLQueryItem(name: "bk", value: v.str("keys", "hostBoxPub")),
+            URLQueryItem(name: "code", value: v.str("pairing", "code")),
+            URLQueryItem(name: "cloud", value: "https://relay.example.com"),
+        ]
+        #expect(RelayCopy.pairing(pasted: comps.string!).contains("Private relay (relay.example.com)"))
+        #expect(RelayCopy.pairing(pasted: "not a link").contains("through Cloudflare"))
+    }
 }

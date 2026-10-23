@@ -69,6 +69,8 @@ export class RelayStore {
         UNIQUE(computer_id, dk, nonce)
       );
     `)
+    // A crash leaves the in-flight row marked delivering, and the new process has no host to ack it.
+    this.db.exec("UPDATE mailbox SET state = 'queued' WHERE state = 'delivering'")
     try {
       chmodSync(file, 0o600)
     } catch {

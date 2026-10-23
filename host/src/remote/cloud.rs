@@ -16,12 +16,7 @@ use std::sync::Mutex;
 use std::time::Duration;
 use tokio::sync::watch;
 
-/// The cloud this build belongs to: main only for builds made with `CODYNC_ENV=main` (the
-/// release workflows), dev for every local build, debug or release, like the apps built next
-/// to it.
-fn build_cloud_url() -> &'static str {
-    crate::environment::Environment::current().cloud_url()
-}
+pub use super::cloud_url::{set_cloud_url, url};
 
 /// How long one successful state pull keeps an account device allowed.
 pub const LEASE_MS: i64 = 15 * 60 * 1000;
@@ -41,49 +36,6 @@ const SAS_NONCES: &str = "sas_nonces";
 /// or not: at most this many per hour keeps a 6-digit SAS out of reach of a search.
 const SAS_NONCES_PER_HOUR: usize = 5;
 const HOUR_MS: i64 = 60 * 60 * 1000;
-
-/// The cloud base URL in use, or `None` when the cloud is off.
-/// `CODYNC_CLOUD=off` > turned off here > `CODYNC_CLOUD_URL` > the saved `cloud_url` > the
-/// build's cloud. Unit tests point at a fake cloud through kv `test_cloud_url`, so they never
-/// reach a real one.
-pub fn url(store: &Store) -> Option<String> {
-    let off = std::env::var("CODYNC_CLOUD").is_ok_and(|v| v == "off")
-        || store.kv_get("cloud_enabled").as_deref() == Some("false");
-    if cfg!(test) {
-        return if off { None } else { store.kv_get("test_cloud_url") };
-    }
-    let env = std::env::var("CODYNC_CLOUD_URL").ok();
-    let saved = store.kv_get("cloud_url");
-    choose_url(off, [env, saved], build_cloud_url())
-}
-
-/// `off` wins. Otherwise the first valid candidate, then `builtin`. An illegal candidate is skipped.
-fn choose_url(off: bool, candidates: [Option<String>; 2], builtin: &str) -> Option<String> {
-    if off {
-        return None;
-    }
-    for candidate in candidates.into_iter().flatten() {
-        if let Some(url) = normalize_url(&candidate) {
-            return Some(url);
-        }
-    }
-    Some(builtin.to_owned())
-}
-
-/// A stored or typed cloud URL: https, or plain http to this computer, with no path or query.
-fn normalize_url(raw: &str) -> Option<String> {
-    let stored = raw.trim().trim_end_matches('/').to_owned();
-    valid_url(&format!("{stored}/")).then_some(stored)
-}
-
-/// A cloud URL this host may be pointed at: https, or plain http to this computer (local dev).
-fn valid_url(u: &str) -> bool {
-    let Ok(parsed) = reqwest::Url::parse(u) else { return false };
-    let local = matches!(parsed.host_str(), Some("127.0.0.1" | "localhost" | "[::1]"));
-    parsed.path() == "/"
-        && parsed.query().is_none()
-        && (parsed.scheme() == "https" || (parsed.scheme() == "http" && local))
-}
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -626,28 +578,6 @@ pub async fn unclaim(hub: &Hub) -> Result<()> {
     pull(hub, &base).await
 }
 
-/// `setCloudUrl`: points this computer at a cloud, or clears the saved URL so the build's cloud
-/// is used again. Empty and null clear it. An illegal URL is refused and changes nothing.
-/// The relay restarts either way. Local only.
-pub fn set_cloud_url(hub: &Hub, raw: Option<&str>) -> Result<CloudStatus> {
-    match raw.map(str::trim).filter(|u| !u.is_empty()) {
-        None => hub.store.kv_delete("cloud_url")?,
-        Some(raw) => {
-            let Some(stored) = normalize_url(raw) else {
-                bail!("That relay address isn't a usable cloud URL.");
-            };
-            hub.store.kv_set("cloud_url", &stored)?;
-        }
-    }
-    let now = url(&hub.store);
-    update_status(hub, |s| {
-        s.enabled = now.is_some();
-        s.url.clone_from(&now);
-    });
-    hub.cloud.config.send_modify(|g| *g += 1);
-    Ok(hub.cloud.status())
-}
-
 /// `setCloud`: turns the cloud on or off; the relay restarts.
 pub fn set_cloud(hub: &Hub, enabled: bool) -> Result<CloudStatus> {
     hub.store.kv_set("cloud_enabled", if enabled { "true" } else { "false" })?;
@@ -714,51 +644,10 @@ mod tests {
     }
 
     #[test]
-    fn only_safe_cloud_urls() {
-        assert!(valid_url("https://codync-cloud.example.workers.dev/"));
-        assert!(valid_url("http://127.0.0.1:8787/"));
-        assert!(!valid_url("http://example.com/"));
-        assert!(!valid_url("https://example.com/path/"));
-        assert!(!valid_url("ftp://example.com/"));
+    fn signed_authority_omits_the_default_port() {
         assert_eq!(authority("https://Codync.Example.dev").unwrap(), "codync.example.dev");
         assert_eq!(authority("http://127.0.0.1:8787").unwrap(), "127.0.0.1:8787");
         assert_eq!(authority("https://x.dev:443").unwrap(), "x.dev", "default port is left out");
-    }
-
-    #[test]
-    fn a_saved_cloud_url_is_used_only_when_nothing_in_front_of_it_is() {
-        assert_eq!(
-            choose_url(false, [None, Some("https://relay.example.com/".into())], "https://api.codync.dev"),
-            Some("https://relay.example.com".into())
-        );
-        assert_eq!(
-            choose_url(
-                false,
-                [Some("https://from.env".into()), Some("https://saved.example".into())],
-                "https://builtin"
-            ),
-            Some("https://from.env".into())
-        );
-        assert_eq!(
-            choose_url(false, [Some("http://example.com".into()), None], "https://builtin"),
-            Some("https://builtin".into()),
-            "an illegal candidate is skipped"
-        );
-        assert_eq!(choose_url(true, [Some("https://relay.example.com".into()), None], "https://builtin"), None);
-    }
-
-    #[test]
-    fn set_cloud_url_stores_a_normalized_url_or_clears_it() {
-        let hub = temp_hub();
-        set_cloud_url(&hub, Some("https://relay.example.com/")).unwrap();
-        assert_eq!(hub.store.kv_get("cloud_url").as_deref(), Some("https://relay.example.com"));
-        let bad = set_cloud_url(&hub, Some("http://example.com")).unwrap_err();
-        assert!(bad.to_string().contains("relay address"), "{bad}");
-        assert_eq!(hub.store.kv_get("cloud_url").as_deref(), Some("https://relay.example.com"));
-        set_cloud_url(&hub, Some("  ")).unwrap();
-        assert_eq!(hub.store.kv_get("cloud_url"), None);
-        set_cloud_url(&hub, Some("http://127.0.0.1:8788")).unwrap();
-        assert_eq!(hub.store.kv_get("cloud_url").as_deref(), Some("http://127.0.0.1:8788"));
     }
 
     #[derive(Default)]
