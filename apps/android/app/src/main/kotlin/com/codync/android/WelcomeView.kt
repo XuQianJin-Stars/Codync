@@ -73,9 +73,9 @@ import kotlin.math.sin
                 Column(Modifier.padding(top = 24.dp)) {
                     ChatGlimpse(beat >= 2, Modifier.padding(bottom = 24.dp))
                     Column(Modifier.rise(beat >= 3), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Text("Your coding agents,\nas teammates.", style = Type.system(34f, FontWeight.SemiBold).copy(letterSpacing = (-0.6).sp),
+                        Text(tr("Your coding agents,\nas teammates."), style = Type.system(34f, FontWeight.SemiBold).copy(letterSpacing = (-0.6).sp),
                             color = Palette.text)
-                        Text("Give each one a name and a project. They work on your computer while you're away.", style = Type.body, color = Palette.secondary)
+                        Text(tr("Give each one a name and a project. They work on your computer while you're away."), style = Type.body, color = Palette.secondary)
                         DemoButton(Modifier.padding(top = 4.dp))
                     }
                 }
@@ -177,7 +177,7 @@ private val CREW = listOf(
 
 /** The full-width 50-point button of the onboarding pages: headline label, a spinner while busy. */
 @Composable internal fun WideButton(title: String, primary: Boolean = true, enabled: Boolean = true, action: () -> Unit) =
-    WideButton(primary, enabled, action = action) { Text(title) }
+    WideButton(primary, enabled, action = action) { Text(tr(title)) }
 
 @Composable internal fun WideButton(primary: Boolean = true, enabled: Boolean = true, busy: Boolean = false, action: () -> Unit,
     label: @Composable () -> Unit) {

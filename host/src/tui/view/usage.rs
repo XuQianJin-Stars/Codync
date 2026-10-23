@@ -52,6 +52,7 @@ pub(super) fn usage(buf: &mut Buffer, area: Rect, app: &App) {
                     win["resetsText"].as_str().map(|s| truncate(s.split(" (").next().unwrap_or(s), 24))
                 })
                 .unwrap_or_default();
+            let reset = crate::tui::l10n::reset_line(&reset);
             rput(buf, inner.right(), y, &reset, t.dim.patch(t.panel));
             y += 1;
         }

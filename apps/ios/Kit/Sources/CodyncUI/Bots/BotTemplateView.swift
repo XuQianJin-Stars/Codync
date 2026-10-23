@@ -26,7 +26,7 @@ struct BotTemplateView: View {
         ModalHeader("Create template")
         VStack(alignment: .leading, spacing: 20) {
             Text(template.name).font(.subheadline).foregroundStyle(Palette.secondary)
-            Text("Copy this bot’s settings to reuse as a template. Conversation history and conversation ID are excluded.")
+            Text(L10n.tr("Copy this bot’s settings to reuse as a template. Conversation history and conversation ID are excluded."))
                 .font(.callout)
                 .foregroundStyle(Palette.secondary)
             ScrollView {
@@ -38,7 +38,7 @@ struct BotTemplateView: View {
             }
             .background(Palette.surface, in: RoundedRectangle(cornerRadius: 12))
             HStack {
-                Text("Includes workspace preferences and agent configuration.")
+                Text(L10n.tr("Includes workspace preferences and agent configuration."))
                     .font(.caption).foregroundStyle(Palette.secondary)
                 Spacer()
                 Button {

@@ -42,8 +42,8 @@ struct MemoryInfoSheet: View {
                                 .foregroundStyle(Palette.secondary)
                                 .frame(width: 22)
                             VStack(alignment: .leading, spacing: 2) {
-                                Text(item.title)
-                                Text(item.detail)
+                                Text(L10n.tr(item.title))
+                                Text(L10n.tr(item.detail))
                                     .font(.footnote)
                                     .foregroundStyle(Palette.secondary)
                                     .fixedSize(horizontal: false, vertical: true)

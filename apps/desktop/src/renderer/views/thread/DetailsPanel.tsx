@@ -101,7 +101,7 @@ function ComputerUse({ bot }: { bot: Bot }) {
   const ready = screen.platform === 'windows' || (screen.enabled && screen.connected && screen.capture && screen.input)
   return (
     <section className="details-section">
-      <span className="details-section-title">Computer</span>
+      <Text className="details-section-title">Computer</Text>
       <div className="outlined-card details-switch">
         <RowLabel grow label="Use the computer" detail={ready ? null : 'On that computer, open Codync → Settings → Computer access to set it up first.'} />
         <HStack as="span" align="stretch" className="details-switch-control">

@@ -7,6 +7,7 @@ import { Icon } from '../../components/Icon'
 import { Dialog, ModalHeader, SheetPage } from '../../components/Overlay'
 import { HStack, IconSlot, Spacer, VStack } from '../../components/Stack'
 import { Text } from '../../components/Text'
+import { useTr } from '../../lib/use-language'
 import { useStore } from '../../store/context'
 import { FormSheet } from '../marketplace/pieces'
 import { useAgentModels } from './agent-models'
@@ -34,6 +35,7 @@ export function AgentStepBanner({ bot }: { bot: Bot }) {
 /** The Agent card's Fallbacks: the agents that carry on in order, added, moved and removed here, saved with the form. */
 export function FallbacksRow({ draft, bot, onChange }: { draft: BotDraft; bot: Bot; onChange: (update: (d: BotDraft) => BotDraft) => void }) {
   const store = useStore()
+  const tr = useTr()
   const [adding, setAdding] = useState(false)
   const [about, setAbout] = useState(false)
   const list = draft.fallbacks ?? []
@@ -66,7 +68,7 @@ export function FallbacksRow({ draft, bot, onChange }: { draft: BotDraft; bot: B
         <Text tone="secondary">No fallbacks yet.</Text>
       )}
       <Text size="caption" tone="secondary">
-        {`If ${store.backendName(draft.backend)} runs out of usage or can't answer, the bot carries on with the next one. Chat, memory and workspace carry over.`}
+        {tr('If {agent} runs out of usage or can\'t answer, the bot carries on with the next one. Chat, memory and workspace carry over.').replace('{agent}', store.backendName(draft.backend))}
       </Text>
       <Dialog open={about} title="Fallbacks" message={ABOUT} actions={[]} cancel="OK" onClose={() => setAbout(false)} />
       <FormSheet open={adding} onClose={() => setAdding(false)} width={460} height={420}>

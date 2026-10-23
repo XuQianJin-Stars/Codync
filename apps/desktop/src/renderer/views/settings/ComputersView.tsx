@@ -14,6 +14,7 @@ import { StoreContext, useApp } from '../../store/context'
 import { ComputerBadge } from '../ComputerBadge'
 import { PairingCode } from '../PairingCode'
 import { AuthorizedDevicesSection } from './AuthorizedDevicesSection'
+import { useTr } from '../../lib/use-language'
 import { errorText, liveClient, relativeDay, Reveal, SectionHeader, statusText, thisMac } from './parts'
 import { useSSH } from './ssh-model'
 import { SSHRow } from './SSHRow'
@@ -24,6 +25,7 @@ import { VoiceChatSettingsView } from './VoiceChatSettingsView'
  * SSH profiles; and the account's other computers.
  */
 export function ComputersView() {
+  const tr = useTr()
   const app = useApp()
   const account = useAccount()
   const sshState = useSSH()
@@ -47,7 +49,7 @@ export function ComputersView() {
           </SectionHeader>
           <Reveal show={sshState.state.profiles.length === 0}>
             <Text as="div" size="callout" tone="secondary">
-              Run bots on another computer you reach with SSH. It needs codync-host installed; your SSH keys stay on {thisMac}.
+              {tr('Run bots on another computer you reach with SSH. It needs codync-host installed; your SSH keys stay on {name}.').replaceAll('{name}', tr(thisMac))}
             </Text>
           </Reveal>
           {sshState.state.profiles.map((profile) => (
@@ -88,6 +90,7 @@ const isMacLabel = thisMac === 'this Mac' ? 'This Mac' : 'This computer'
 
 /** This computer or an SSH computer: relay, account membership, pairing and authorized devices. */
 function ManagedComputerCard({ store, ssh: overSSH }: { store: BotStore; ssh: boolean }) {
+  const tr = useTr()
   const app = useApp()
   const account = useAccount()
   useModel(store)
@@ -155,7 +158,7 @@ function ManagedComputerCard({ store, ssh: overSSH }: { store: BotStore; ssh: bo
             <VStack grow className="settings-stack">
               <Text size="headline">{name}</Text>
               <Text size="caption" tone="secondary">
-                {overSSH ? 'Over SSH' : isMacLabel} · {statusText(store)}
+                {`${tr(overSSH ? 'Over SSH' : isMacLabel)} · ${tr(statusText(store))}`}
               </Text>
             </VStack>
             {overSSH ? (
@@ -169,7 +172,7 @@ function ManagedComputerCard({ store, ssh: overSSH }: { store: BotStore; ssh: bo
             ? [
                 <Switch key="cloud" className="settings-appear" on={cloud.enabled} disabled={busy || !manageable} onChange={(on) => run(() => app.cloud.setCloud(store, on))}>
                   <span className="settings-stack">
-                    <span>Reach from anywhere</span>
+                    <Text>Reach from anywhere</Text>
                     <Text size="caption" tone={cloud.lastError ? 'attention' : 'secondary'}>{cloudLine}</Text>
                   </span>
                 </Switch>,
@@ -185,7 +188,7 @@ function ManagedComputerCard({ store, ssh: overSSH }: { store: BotStore; ssh: bo
                   onChange={(on) => (on ? setConfirmAutoApproval(true) : setApproval('code'))}
                 >
                   <span className="settings-stack settings-appear">
-                    <span>Skip the 6-digit check</span>
+                    <Text>Skip the 6-digit check</Text>
                     <Text size="caption" tone={autoApproval ? 'attention' : 'secondary'}>
                       {autoApproval ? 'Devices on your account get in on their own.' : 'Each new device shows a code you approve here.'}
                     </Text>

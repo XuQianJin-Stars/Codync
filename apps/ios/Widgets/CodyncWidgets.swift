@@ -91,7 +91,7 @@ struct BotsWidgetView: View {
                 Label("Connect a computer", systemImage: "desktopcomputer")
                     .font(.caption)
             default:
-                EmptyWidget(text: "Open Codync to pair with your computer.")
+                EmptyWidget(text: L10n.tr("Open Codync to pair with your computer."))
             }
         } else {
             switch family {
@@ -123,7 +123,7 @@ struct BotsTeamWidget: Widget {
                     // Each spot opens its own bot; the gaps between them open the app.
                     BotsTeamCard(bots: entry.bots.bots, picks: entry.picks, opens: entry.bots.links.mapValues { OpenBotIntent($0) })
                 } else {
-                    EmptyWidget(text: "Open Codync to pair with your computer.")
+                    EmptyWidget(text: L10n.tr("Open Codync to pair with your computer."))
                 }
             }
             .containerBackground(Palette.surface, for: .widget)
@@ -400,13 +400,13 @@ struct UsageWidgetView: View {
         } else if family == .accessoryInline || family == .accessoryCircular || family == .accessoryRectangular {
             Text("No usage yet")
         } else {
-            EmptyWidget(text: SharedStore.activeContext.computers.isEmpty ? "Open Codync to pair with your computer." : "No usage reported yet.")
+            EmptyWidget(text: L10n.tr(SharedStore.activeContext.computers.isEmpty ? "Open Codync to pair with your computer." : "No usage reported yet."))
         }
     }
 
     private func hero(_ item: (provider: String, window: UsageWindow)) -> some View {
         VStack(alignment: .leading, spacing: 2) {
-            Text("\(item.provider) · \(item.window.label)").font(.caption).foregroundStyle(Palette.secondary).lineLimit(1)
+            Text("\(item.provider) · \(L10n.tr(item.window.title))").font(.caption).foregroundStyle(Palette.secondary).lineLimit(1)
             Text(percent(item.window))
                 .font(.system(size: 34, weight: .semibold, design: .rounded))
                 .monospacedDigit()
@@ -419,7 +419,7 @@ struct UsageWidgetView: View {
     private func bar(_ item: (provider: String, window: UsageWindow)) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack {
-                Text("\(item.provider) \(item.window.label)").lineLimit(1)
+                Text("\(item.provider) \(L10n.tr(item.window.title))").lineLimit(1)
                 Spacer(minLength: 4)
                 Text(percent(item.window)).monospacedDigit()
             }
@@ -433,9 +433,9 @@ struct UsageWidgetView: View {
 
     @ViewBuilder private func resetLine(_ w: UsageWindow) -> some View {
         if let date = w.resetDate, date > entry.date {
-            Text("resets \(Text(date, style: .relative))")
+            Text(L10n.resetLine("resets \(RelativeTime.until(date, now: entry.date))"))
         } else if let text = w.resetDescription {
-            Text(text)
+            Text(L10n.resetLine(text))
         } else {
             Text(" ")
         }
@@ -569,7 +569,7 @@ struct ProviderUsageView: View {
             if let provider, !provider.windows.isEmpty {
                 ProviderWidgetCard(provider: provider, layout: family == .systemSmall ? .small : family == .systemLarge ? .large : .medium, date: entry.date)
             } else {
-                EmptyWidget(text: "Open Codync to connect a computer and check \(entry.provider.capitalized) usage.")
+                EmptyWidget(text: L10n.tr("Open Codync to connect a computer and check {provider} usage.").replacingOccurrences(of: "{provider}", with: entry.provider.capitalized))
             }
         }
         .containerBackground(Palette.surface, for: .widget)

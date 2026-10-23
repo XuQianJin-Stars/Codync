@@ -6,6 +6,7 @@ import { HStack, VStack } from '../components/Stack'
 import { Text } from '../components/Text'
 import { ThinkingOrb } from '../components/ThinkingOrb'
 import { messagePreview } from '../lib/message-preview'
+import { useTr } from '../lib/use-language'
 import type { BotStore } from '../store/bot-store'
 
 /** A roster row: avatar with status, name, and the live activity or last message (Grok Bot's desktop sidebar). */
@@ -32,6 +33,8 @@ export const BotRow = memo(function BotRow({ bot, store, compact, usingComputer,
 
 /** Live activity while working, otherwise the last message (Grok Bot row behavior). */
 function Preview({ bot, store }: { bot: Bot; store: BotStore }) {
+  const tr = useTr()
+  const place = bot.managedWorkspace ? tr('Personal workspace') : folderName(bot)
   if (needsInput(bot)) {
     return (
       <HStack as="span" gap={6} shrink>
@@ -49,5 +52,5 @@ function Preview({ bot, store }: { bot: Bot; store: BotStore }) {
     )
   }
   if (bot.status === 'error') return <Text size="callout" tone="danger" truncate>{messagePreview(bot.lastMessage ?? 'Something went wrong')}</Text>
-  return <Text size="callout" tone="secondary" truncate>{messagePreview(bot.lastMessage ?? (isGroup(bot) ? `${bot.members.length} bots` : `${store.backendName(bot.backend)} · ${folderName(bot)}`))}</Text>
+  return <Text size="callout" tone="secondary" truncate>{messagePreview(bot.lastMessage ?? (isGroup(bot) ? `${bot.members.length} bots` : `${store.backendName(bot.backend)} · ${place}`))}</Text>
 }
