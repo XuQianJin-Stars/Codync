@@ -3,6 +3,7 @@ import { CharacterAvatar, type Mood } from '../components/Avatar'
 import { Button } from '../components/Controls'
 import { Icon } from '../components/Icon'
 import { Text } from '../components/Text'
+import { useTr } from '../lib/use-language'
 import { palette, rgbHex, useDark } from '../lib/theme'
 import { useApp } from '../store/context'
 
@@ -18,10 +19,27 @@ export function HostStateView({ compact = false }: { compact?: boolean }) {
     case 'missingBinary':
       return <EmptyState compact={compact} icon={<HostBot compact={compact} mood="failed" />} title="The host is missing" message={window.codync.appScheme === 'codync-dev' ? 'Rebuild Codync Dev with its development host, then open it again.' : "This copy of Codync doesn't include codync-host. Download Codync again from codync.dev or GitHub."} />
     case 'failed':
-      return <EmptyState compact={compact} icon={<HostBot compact={compact} mood="failed" />} title="The host isn't running" message={state.message} action={['Try again', () => window.codync.host.restart()]} />
+      return <FailedHost compact={compact} message={state.message} />
     default:
       return <EmptyState compact={compact} icon={<HostBot compact={compact} mood="working" />} title="Starting the host…" message="This takes a few seconds." />
   }
+}
+
+/** launchctl prints this in English, with the plist path in the host's own error line. */
+function hostFailure(message: string, tr: (text: string) => string): string {
+  const loaded = /launchctl bootstrap \S+ (\S+) failed/.exec(message)
+  if (loaded || message.includes('Bootstrap failed:')) {
+    const path = loaded?.[1]
+    return path
+      ? tr("The background service didn't start. macOS couldn't load {path}.").replaceAll('{path}', path)
+      : tr("The background service didn't start.")
+  }
+  return tr(message)
+}
+
+function FailedHost({ compact, message }: { compact: boolean; message: string }) {
+  const tr = useTr()
+  return <EmptyState compact={compact} icon={<HostBot compact={compact} mood="failed" />} title="The host isn't running" message={hostFailure(message, tr)} action={['Try again', () => window.codync.host.restart()]} />
 }
 
 /** The app-icon bot expresses progress or failure without replacing the recovery instructions. */

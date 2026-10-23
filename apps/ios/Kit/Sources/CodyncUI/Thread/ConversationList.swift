@@ -394,7 +394,7 @@ struct JumpToLatest: View {
         ZStack {
             if visible {
                 jumpButton
-                    .help("Jump to latest")
+                    .help(L10n.tr("Jump to latest"))
                     .padding(.bottom, 10)
                     .transition(.scale(scale: 0.8).combined(with: .opacity))
             }
@@ -404,14 +404,14 @@ struct JumpToLatest: View {
 
     @ViewBuilder private var jumpButton: some View {
         if #available(iOS 26, *) {
-            Button("Jump to latest", systemImage: "arrow.down", action: action)
+            Button(L10n.tr("Jump to latest"), systemImage: "arrow.down", action: action)
                 .labelStyle(.iconOnly)
                 .font(.system(size: 18, weight: .medium))
                 .controlSize(.large)
                 .buttonStyle(.glass)
                 .buttonBorderShape(.circle)
         } else {
-            Button("Jump to latest", systemImage: "arrow.down", action: action)
+            Button(L10n.tr("Jump to latest"), systemImage: "arrow.down", action: action)
                 .labelStyle(.iconOnly)
                 .buttonStyle(IconButtonStyle())
                 .glass(in: Circle())

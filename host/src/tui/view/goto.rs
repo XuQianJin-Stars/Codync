@@ -5,6 +5,7 @@ use ratatui::layout::Rect;
 use ratatui::style::Modifier;
 
 use super::super::app::{ACTIONS, Action, App, Click, FILTERS, GotoItem, Mark};
+use super::super::l10n::tr;
 use super::super::md::truncate;
 use super::buffer::{centered, frame_box, hline, put, put_line, restyle, rput};
 use super::overlay::field_line;
@@ -82,11 +83,14 @@ pub(super) fn goto(buf: &mut Buffer, area: Rect, app: &mut App, g: &super::super
                     restyle(buf, Rect::new(inner.x - 1, y, inner.width + 2, 1), t.sel);
                 }
                 if let Some((label, key, _)) = ACTIONS.iter().find(|x| x.2 == *a) {
-                    put(buf, inner.x + 2, y, inner.width, label, if sel { t.bold } else { t.secondary }.patch(base));
+                    let shown = tr(label);
+                    put(buf, inner.x + 2, y, inner.width, &shown, if sel { t.bold } else { t.secondary }.patch(base));
+                    let language = super::super::l10n::language_title();
                     let hint = match (a, app.analytics) {
                         (Action::Analytics, Some(true)) => "on",
                         (Action::Analytics, Some(false)) => "off",
                         (Action::Analytics, None) => "",
+                        (Action::Language, _) => language.as_ref(),
                         _ => key,
                     };
                     rput(buf, inner.right(), y, hint, t.dim.patch(base));

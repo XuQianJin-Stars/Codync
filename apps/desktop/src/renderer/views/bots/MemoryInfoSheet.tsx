@@ -38,7 +38,7 @@ export function MemoryInfoSheet({ icon, title, points }: { icon: string; title: 
                 <Icon name={d.icon} size={15} />
               </IconSlot>
               <VStack gap={2} grow>
-                <span>{d.title}</span>
+                <Text>{d.title}</Text>
                 <Text size="footnote" tone="secondary">{d.detail}</Text>
               </VStack>
             </HStack>

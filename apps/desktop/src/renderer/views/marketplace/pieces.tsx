@@ -4,6 +4,7 @@ import { Sheet, usePresence } from '../../components/Overlay'
 import { Icon } from '../../components/Icon'
 import { HStack, Spacer, VStack } from '../../components/Stack'
 import { Text } from '../../components/Text'
+import { useTr } from '../../lib/use-language'
 import { ThinkingOrb } from '../../components/ThinkingOrb'
 import './marketplace.css'
 
@@ -34,6 +35,8 @@ export function MarketRow({ title, subtitle, added, busy = false, addLabel = 'Ad
   /** The whole row opens the item's details; without it the row does what its button does. */
   onOpen?: () => void
 }) {
+  const tr = useTr()
+  const addedLabel = tr('Added')
   return (
     <ItemRow
       title={title}
@@ -45,7 +48,7 @@ export function MarketRow({ title, subtitle, added, busy = false, addLabel = 'Ad
           <ThinkingOrb size={18} color="var(--secondary)" />
         </HStack>
       ) : added ? (
-        <HStack as="span" align="stretch" justify="center" className="market-row-status market-row-added" aria-label="Added" title="Added">
+        <HStack as="span" align="stretch" justify="center" className="market-row-status market-row-added" aria-label={addedLabel} title={addedLabel}>
           <Icon name="checkmark" size={11} weight="semibold" />
         </HStack>
       ) : (
@@ -56,7 +59,7 @@ export function MarketRow({ title, subtitle, added, busy = false, addLabel = 'Ad
             onAdd()
           }}
         >
-          {addLabel}
+          {tr(addLabel)}
         </button>
       )}
     />
@@ -72,6 +75,7 @@ export function ItemRow({ title, subtitle, icon, trailing, onOpen }: {
   trailing?: ReactNode
   onOpen?: () => void
 }) {
+  const tr = useTr()
   return (
     <div
       className={`market-row ${onOpen ? 'openable' : ''}`}
@@ -87,8 +91,8 @@ export function ItemRow({ title, subtitle, icon, trailing, onOpen }: {
     >
       <div className="market-row-icon">{icon}</div>
       <VStack gap={2} grow>
-        <Text size="body" weight="medium" tone="text" truncate title={title}>{title}</Text>
-        <Text size="subheadline" tone="secondary" truncate title={subtitle}>{subtitle}</Text>
+        <Text size="body" weight="medium" tone="text" truncate title={tr(title)}>{title}</Text>
+        <Text size="subheadline" tone="secondary" truncate title={tr(subtitle)}>{subtitle}</Text>
       </VStack>
       {trailing}
     </div>
@@ -189,9 +193,10 @@ export function SkillGlyph() {
 
 /** Text that opens a web page (replaces the system `Link`). */
 export function WebLink({ title, url, className }: { title: string; url: string; className?: string }) {
+  const tr = useTr()
   return (
     <button className={`plain-link${className ? ` ${className}` : ''}`} title={url} onClick={() => window.codync.app.openExternal(url)}>
-      {title}
+      {tr(title)}
     </button>
   )
 }
@@ -235,14 +240,17 @@ export function Field({ value, onChange, placeholder, secret = false, lines, mon
   mono?: boolean
   label?: string
 }) {
+  const tr = useTr()
+  const hint = placeholder ? tr(placeholder) : undefined
+  const named = label ? tr(label) : hint
   const className = `market-field${mono ? ' mono' : ''}`
   if (lines) {
     return (
       <textarea
         className={className}
-        aria-label={label ?? placeholder}
+        aria-label={named}
         value={value}
-        placeholder={placeholder}
+        placeholder={hint}
         spellCheck={false}
         onChange={(e) => onChange(e.target.value)}
         style={{ minHeight: `${lines[0] * 1.3}em`, maxHeight: `${lines[1] * 1.3}em` }}
@@ -252,10 +260,10 @@ export function Field({ value, onChange, placeholder, secret = false, lines, mon
   return (
     <input
       className={className}
-      aria-label={label ?? placeholder}
+      aria-label={named}
       type={secret ? 'password' : 'text'}
       value={value}
-      placeholder={placeholder}
+      placeholder={hint}
       spellCheck={false}
       autoComplete="off"
       onChange={(e) => onChange(e.target.value)}

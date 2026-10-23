@@ -9,6 +9,8 @@ import { useDismiss } from '../../components/Overlay'
 import { HStack, IconSlot, VStack } from '../../components/Stack'
 import { Text } from '../../components/Text'
 import { useModel } from '../../lib/observable'
+import { languageTitle, systemIsChinese, type AppLanguage } from '../../lib/l10n'
+import { useTr } from '../../lib/use-language'
 import { DEFAULT_TEXT_SIZE, prefs, TEXT_SIZES, usePref } from '../../lib/prefs'
 import { useAccount } from '../../store/account'
 import { useScreenViewed } from '../../store/analytics'
@@ -44,6 +46,7 @@ export function SettingsView({ page: initial }: { page: SettingsPage }) {
   const [page, setPage] = useState(initial)
   const app = useApp()
   const dismiss = useDismiss()
+  const tr = useTr()
   const current = pages.find((p) => p.id === page)!
   useScreenViewed(pageScreens[page])
   return (
@@ -51,7 +54,7 @@ export function SettingsView({ page: initial }: { page: SettingsPage }) {
       <nav className="settings-sidebar">
         {['Personal', thisComputer].map((group) => (
           <Fragment key={group}>
-            <div className="settings-group">{group}</div>
+            <div className="settings-group">{tr(group)}</div>
             {pages.filter((p) => p.group === group).map((item) => (
               <button key={item.id} className={`settings-item ${item.id === page ? 'selected' : ''}`} aria-current={item.id === page ? 'page' : undefined} onClick={() => setPage(item.id)}>
                 <IconSlot width={18} tone="secondary">
@@ -116,6 +119,8 @@ function GeneralSettings() {
   const [appearance, setAppearance] = useState<Appearance>('system')
   useEffect(() => void window.codync.app.appearance().then(setAppearance), [])
   const [textSize, setTextSize] = usePref(prefs.textSize)
+  const [language, setLanguage] = usePref(prefs.appLanguage)
+  const systemChinese = systemIsChinese()
   const [usageIconStyle, setUsageIconStyle] = usePref(prefs.usageIconStyle)
   const [compact, setCompact] = usePref(prefs.sidebarCompact)
   const [showInDock, setShowInDock] = useState(true)
@@ -126,6 +131,7 @@ function GeneralSettings() {
   useEffect(() => void window.codync.island.enabled().then(setIsland), [])
   const [voiceShortcut, setVoiceShortcut] = useState<VoiceShortcut>('off')
   useEffect(() => void window.codync.speech.shortcut().then(setVoiceShortcut), [])
+  const tr = useTr()
 
   return (
     <CardForm>
@@ -163,7 +169,7 @@ function GeneralSettings() {
         <ValueRow label="Text size">
           <ChoicePicker
             selection={textSize}
-            options={TEXT_SIZES.map((s) => ({ id: s, label: s === DEFAULT_TEXT_SIZE ? `${s} pt (Default)` : `${s} pt` }))}
+            options={TEXT_SIZES.map((s) => ({ id: s, label: s === DEFAULT_TEXT_SIZE ? tr('{size} pt (Default)').replace('{size}', String(s)) : `${s} pt` }))}
             onChange={setTextSize}
           />
         </ValueRow>
@@ -173,6 +179,25 @@ function GeneralSettings() {
         <Switch on={compact} onChange={setCompact}>
           Compact sidebar
         </Switch>
+      </CardSection>
+      <CardSection
+        title="Language"
+        footer={
+          systemChinese
+            ? 'System language is Chinese. "Follow system" matches this computer. You can switch this app to English.'
+            : 'System language is English. "Follow system" matches this computer. You can switch this app to Chinese.'
+        }
+      >
+        <ValueRow label="App language">
+          <ChoicePicker
+            selection={language}
+            options={(['system', 'zh', 'en'] as const satisfies readonly AppLanguage[]).map((id) => ({
+              id,
+              label: languageTitle(id, language, systemChinese),
+            }))}
+            onChange={setLanguage}
+          />
+        </ValueRow>
       </CardSection>
       <CardSection title="System">
         {window.codync.platform === 'darwin' ? <Switch on={showInDock} onChange={(on) => void window.codync.app.setShowInDock(on).then(setShowInDock)}>Show in Dock</Switch> : null}
@@ -202,12 +227,13 @@ function PrivacySettings() {
   const local = useModel(app.local)
   const running = local !== null && local.connection.kind === 'online'
   const [about, setAbout] = useState(false)
+  const tr = useTr()
   const setShared = (on: boolean) => void local?.setAnalytics(on).catch((e: unknown) => app.setError(errorText(e)))
   return (
     <>
       <CardSection title="Privacy" footer="Which features you use, never your messages, code or files. Helps us spot bugs sooner and make Codync better for you.">
         <HStack gap={4}>
-          <span className={running ? undefined : 'settings-off'}>Share usage analytics</span>
+          <span className={running ? undefined : 'settings-off'}>{tr('Share usage analytics')}</span>
           <IconButton title="About usage analytics" icon="info.circle" onClick={() => setAbout(true)} />
           <Switch on={local?.analytics === true} onChange={setShared} disabled={!running} label="Share usage analytics" className="settings-privacy-switch" />
         </HStack>

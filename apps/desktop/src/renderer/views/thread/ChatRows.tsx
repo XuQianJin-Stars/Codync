@@ -9,6 +9,7 @@ import { HStack, VStack } from '../../components/Stack'
 import { Text } from '../../components/Text'
 import { ThinkingOrb } from '../../components/ThinkingOrb'
 import { messagePreview } from '../../lib/message-preview'
+import { useTr } from '../../lib/use-language'
 import { avatarColor } from '../../lib/theme'
 import { useStore as useLiveStore, useStoreRef as useStore } from '../../store/context'
 import { QUICK_REACTIONS, type BotStore } from '../../store/bot-store'
@@ -111,7 +112,8 @@ export function Bubble({ className, items, reactions, children }: { className: s
 
 /** The centered time label between runs of messages. */
 export function TimeSeparator({ date }: { date: number }) {
-  return <Text as="div" size="footnote" tone="tertiary" className="time-separator">{relativeTime.separator(date)}</Text>
+  const tr = useTr()
+  return <Text as="div" size="footnote" tone="tertiary" className="time-separator">{relativeTime.separator(date, tr)}</Text>
 }
 
 const fullDate = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' })

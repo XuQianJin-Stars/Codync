@@ -3,6 +3,7 @@ import { Icon } from '../../components/Icon'
 import { ModalHeader, SheetPage } from '../../components/Overlay'
 import { HStack, IconSlot, VStack } from '../../components/Stack'
 import { Text } from '../../components/Text'
+import { useTr } from '../../lib/use-language'
 import { openLink } from '../../store/analytics'
 
 const PRIVACY_POLICY = 'https://codync.dev/privacy'
@@ -20,6 +21,7 @@ const details = [
 
 /** Settings → Privacy's info button: everything Share usage analytics covers. */
 export function AnalyticsSheet() {
+  const tr = useTr()
   return (
     <SheetPage>
       <ModalHeader icon="chart.bar" title="Usage analytics" />
@@ -27,11 +29,11 @@ export function AnalyticsSheet() {
         <CardSection
           footer={
             <>
-              See the{' '}
+              {tr('See the')}{' '}
               <button className="settings-link" onClick={() => openLink(PRIVACY_POLICY, 'privacy')}>
-                Privacy Policy
+                {tr('Privacy Policy')}
               </button>{' '}
-              for details.
+              {tr('for details.')}
             </>
           }
         >
@@ -41,7 +43,7 @@ export function AnalyticsSheet() {
                 <Icon name={d.icon} size={15} color="var(--secondary)" />
               </IconSlot>
               <VStack gap={2} grow className="settings-stack">
-                <span>{d.title}</span>
+                <span>{tr(d.title)}</span>
                 <Text size="footnote" tone="secondary">{d.detail}</Text>
               </VStack>
             </HStack>

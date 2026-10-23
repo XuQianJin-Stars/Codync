@@ -4,6 +4,7 @@ import { Icon } from '../../components/Icon'
 import { ModalHeader } from '../../components/Overlay'
 import { HStack, VStack } from '../../components/Stack'
 import { Text } from '../../components/Text'
+import { useTr } from '../../lib/use-language'
 import './bots.css'
 
 /**
@@ -22,6 +23,7 @@ export function encodeTemplate(draft: BotDraft): string {
 
 /** A portable settings snapshot, with no conversation identity or runtime state. */
 export function BotTemplateView({ draft }: { draft: BotDraft }) {
+  const tr = useTr()
   const encoded = useMemo(() => encodeTemplate(draft), [draft])
   const [copied, setCopied] = useState(false)
 
@@ -55,7 +57,7 @@ export function BotTemplateView({ draft }: { draft: BotDraft }) {
           <Text size="caption" tone="secondary" grow>Includes workspace preferences and agent configuration.</Text>
           <button className="press bot-template-copy" onClick={copy}>
             <Icon key={copied ? 'checkmark' : 'square.on.square'} name={copied ? 'checkmark' : 'square.on.square'} size={13} weight="semibold" className="fade-in" />
-            {copied ? 'Copied' : 'Copy template'}
+            {tr(copied ? 'Copied' : 'Copy template')}
           </button>
         </HStack>
       </VStack>

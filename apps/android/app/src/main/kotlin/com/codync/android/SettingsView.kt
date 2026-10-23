@@ -107,15 +107,33 @@ import kotlinx.serialization.json.put
                     }
                 }
             }
+            val appLanguage = LocalAppLanguage.current
+            val setAppLanguage = LocalSetAppLanguage.current
+            val systemChinese = LocalSystemChinese.current
+            val phrases = LocalPhrases.current
+            CardSection("Language", footer = if (systemChinese) {
+                "System language is Chinese. \"Follow system\" matches the phone. You can switch this app to English."
+            } else {
+                "System language is English. \"Follow system\" matches the phone. You can switch this app to Chinese."
+            }) {
+                row {
+                    ValueRow("App language") {
+                        ChoicePicker(appLanguage, AppLanguage.entries.map {
+                            it to AppLanguage.menuTitle(it, appLanguage, systemChinese, phrases)
+                        }, setAppLanguage)
+                    }
+                }
+            }
             NotificationsSection(state, store)
             CardSection(footer = "Which features you use, never your messages, code or files. Helps us spot bugs sooner and make Codync better for you.") {
                 row {
+                    val analyticsLabel = tr("Share usage analytics")
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text("Share usage analytics", style = Type.body, color = Palette.text, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(analyticsLabel, style = Type.body, color = Palette.text, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         IconButton("About usage analytics", "info.circle") { aboutAnalytics = true }
                         Box(Modifier.weight(1f))
                         CodyncSwitch(Analytics.enabled, Analytics::setEnabled, Modifier.width(34.dp)
-                            .semantics { contentDescription = "Share usage analytics" }) {}
+                            .semantics { contentDescription = analyticsLabel }) {}
                     }
                 }
             }

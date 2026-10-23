@@ -6,6 +6,7 @@ import { ModalHeader, useDismiss } from '../../components/Overlay'
 import { HStack, Spacer, VStack } from '../../components/Stack'
 import { Text } from '../../components/Text'
 import { useStore } from '../../store/context'
+import { useTr } from '../../lib/use-language'
 import { errorText, fillDefaults, newDraft } from './drafts'
 import { AvatarPicker } from './parts'
 import './bots.css'
@@ -112,6 +113,7 @@ function CreateLayout({ title, preview, name, placeholder, onName, canCreate, co
   children: ReactNode
 }) {
   const store = useStore()
+  const tr = useTr()
   const dismiss = useDismiss()
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -136,7 +138,7 @@ function CreateLayout({ title, preview, name, placeholder, onName, canCreate, co
           className="field-box create-name"
           autoFocus
           value={name}
-          placeholder={placeholder}
+          placeholder={tr(placeholder)}
           aria-label="Name"
           onChange={(e) => onName(e.target.value)}
           onKeyDown={(e) => {

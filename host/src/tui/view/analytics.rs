@@ -54,12 +54,15 @@ pub(super) fn analytics(buf: &mut Buffer, area: Rect, s: &AnalyticsSheet) {
     let width = usize::from(body.width);
     let mut lines = Vec::new();
     for (title, detail) in DETAILS {
+        let title = crate::tui::l10n::tr(title).into_owned();
+        let detail = crate::tui::l10n::tr(detail).into_owned();
         lines.push(Line::from(Span::styled(format!(" {title}"), t.bold)));
         lines.extend(md::wrap(&[Span::styled(detail, t.secondary)], width, &[Span::raw(" ")], &[Span::raw(" ")]));
         lines.push(Line::default());
     }
+    let policy = crate::tui::l10n::tr("See the Privacy Policy for details: ").into_owned();
     lines.push(Line::from(vec![
-        Span::styled(" See the Privacy Policy for details: ", t.dim),
+        Span::styled(format!(" {policy}"), t.dim),
         Span::styled("https://codync.dev/privacy", t.dim.add_modifier(Modifier::UNDERLINED)),
     ]));
     let h = usize::from(body.height);

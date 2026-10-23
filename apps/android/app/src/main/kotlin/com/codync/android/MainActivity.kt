@@ -12,7 +12,9 @@ import androidx.activity.viewModels
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.key
@@ -20,6 +22,10 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
 import com.codync.android.design.CodyncTheme
+import com.codync.android.design.LocalAppLanguage
+import com.codync.android.design.LocalPhrases
+import com.codync.android.design.LocalSetAppLanguage
+import com.codync.android.design.LocalSystemChinese
 import com.codync.android.design.OverlayRoot
 import coil3.ImageLoader
 import coil3.disk.DiskCache
@@ -54,7 +60,19 @@ class MainActivity : ComponentActivity() {
             }
             val images = remember(state.contextId, state.generation) { AccountImages.open(applicationContext, state.contextId) }
             DisposableEffect(images) { onDispose { AccountImages.close(images) } }
-            CompositionLocalProvider(LocalNetworkImages provides images) {
+            var appLanguage by remember { mutableStateOf(AppLanguageStore.get(applicationContext)) }
+            val phrases = remember { AppLanguageStore.phrases(applicationContext) }
+            val systemChinese = remember { java.util.Locale.getDefault().language == "zh" }
+            CompositionLocalProvider(
+                LocalNetworkImages provides images,
+                LocalAppLanguage provides appLanguage,
+                LocalSystemChinese provides systemChinese,
+                LocalPhrases provides phrases,
+                LocalSetAppLanguage provides { next ->
+                    appLanguage = next
+                    AppLanguageStore.set(applicationContext, next)
+                },
+            ) {
                 key(state.contextId, state.generation) {
                     val appearance by AppearancePreferences.mode.collectAsStateWithLifecycle()
                     val dark = appearance.isDark(isSystemInDarkTheme())
