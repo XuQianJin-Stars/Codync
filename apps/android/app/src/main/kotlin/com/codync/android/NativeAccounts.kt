@@ -51,7 +51,7 @@ object NativeAccounts {
 
     private fun Session.usableUserId(): String? = takeIf { it.status == Session.SessionStatus.ACTIVE && it.expireAt > System.currentTimeMillis() }?.user?.id
 
-    suspend fun signIn(provider: SignInProvider) {
+    internal suspend fun signIn(provider: SignInProvider) {
         require(Clerk.isInitialized.value) { "Wait for sign-in to finish loading." }
         val oauth = when (provider) {
             SignInProvider.Apple -> OAuthProvider.APPLE
