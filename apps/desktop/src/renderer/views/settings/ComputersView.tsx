@@ -77,8 +77,8 @@ export function ComputersView() {
       </Sheet>
       <Dialog
         open={removingCopy !== null}
-        title={`Remove the older ${removingCopy?.name ?? 'computer'}?`}
-        message={`It's an earlier identity of ${removingCopy?.name ?? 'a computer'} and can't be reached anymore. Removing it only cleans up your account.`}
+        title={tr('Remove the older {name}?').replaceAll('{name}', removingCopy?.name ?? 'computer')}
+        message={tr("It's an earlier identity of {name} and can't be reached anymore. Removing it only cleans up your account.").replaceAll('{name}', removingCopy?.name ?? 'a computer')}
         actions={removingCopy ? [{ title: 'Remove', destructive: true, action: () => void cloud.removeFromAccount(removingCopy.computerId) }] : []}
         onClose={() => setRemovingCopy(null)}
       />
@@ -212,15 +212,15 @@ function ManagedComputerCard({ store, ssh: overSSH }: { store: BotStore; ssh: bo
       </Sheet>
       <Dialog
         open={confirmAutoApproval}
-        title="Let account devices in without a code?"
-        message={`Any device signed in to your account gets full control of ${name}: its files, terminals and bots, with no check here. If someone gets into your account, or Codync's cloud is ever compromised, they could add their own device and you'd have no chance to stop it. Devices paired with a QR code aren't affected.`}
+        title={tr('Let account devices in without a code?')}
+        message={tr("Any device signed in to your account gets full control of {name}: its files, terminals and bots, with no check here. If someone gets into your account, or Codync's cloud is ever compromised, they could add their own device and you'd have no chance to stop it. Devices paired with a QR code aren't affected.").replaceAll('{name}', name)}
         actions={[{ title: 'Skip the check', destructive: true, action: () => setApproval('auto') }]}
         onClose={() => setConfirmAutoApproval(false)}
       />
       <Dialog
         open={confirmUnclaim}
-        title={`Remove ${name} from the account?`}
-        message="Devices that were approved through the account lose access. Devices paired with a QR code keep it."
+        title={tr('Remove {name} from the account?').replaceAll('{name}', name)}
+        message={tr('Devices that were approved through the account lose access. Devices paired with a QR code keep it.')}
         actions={[{ title: 'Remove from account', destructive: true, action: () => run(() => app.cloud.unclaim(store)) }]}
         onClose={() => setConfirmUnclaim(false)}
       />

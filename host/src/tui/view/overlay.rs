@@ -44,13 +44,13 @@ pub(super) fn overlay(buf: &mut Buffer, area: Rect, app: &mut App, top: &Overlay
             let t = theme();
             let r = centered(area, 62, 8);
             let inner = frame_box(buf, r, t.red, t.panel, None);
-            // The title names the bot. The detail and note are interface copy.
-            let title = super::super::l10n::tr(&c.title);
+            // The title already includes a bot or device name. Translating it
+            // here would also translate a name that is itself a phrase.
             let detail = super::super::l10n::tr(&c.detail);
             let note = super::super::l10n::tr(&c.note);
             let button = super::super::l10n::tr(c.button);
             let cancel = super::super::l10n::tr("Cancel");
-            put(buf, inner.x, inner.y, inner.width, title.as_ref(), t.red.patch(t.panel).add_modifier(Modifier::BOLD));
+            put(buf, inner.x, inner.y, inner.width, &c.title, t.red.patch(t.panel).add_modifier(Modifier::BOLD));
             put(buf, inner.x, inner.y + 1, inner.width, detail.as_ref(), t.text.patch(t.panel));
             put(buf, inner.x, inner.y + 2, inner.width, note.as_ref(), t.secondary.patch(t.panel));
             let danger = if t.color {

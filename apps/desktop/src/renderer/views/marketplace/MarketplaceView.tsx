@@ -434,7 +434,7 @@ function InstalledView({ back }: { back: () => void }) {
       <Dialog
         open={removing !== null}
         title={tr('Remove {name}?').replaceAll('{name}', removing?.name ?? '')}
-        message={removing ? (removing.isSkill ? 'Bots stop using this skill.' : 'Bots lose this connector, and the keys saved for it are deleted.') : null}
+        message={removing ? tr(removing.isSkill ? 'Bots stop using this skill.' : 'Bots lose this connector, and the keys saved for it are deleted.') : null}
         actions={removing ? [{ title: 'Remove', destructive: true, action: () => void remove(removing) }] : []}
         onClose={() => setRemoving(null)}
       />

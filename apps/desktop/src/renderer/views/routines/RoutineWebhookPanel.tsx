@@ -89,8 +89,8 @@ export function RoutineWebhookPanel({ botId, routineId }: { botId: string; routi
       )}
       <Dialog
         open={confirmRotate}
-        title="Replace the key?"
-        message="Senders using the current key stop working until they get the new one."
+        title={tr('Replace the key?')}
+        message={tr('Senders using the current key stop working until they get the new one.')}
         actions={[{ title: 'Replace key', destructive: true, action: () => void load(true) }]}
         onClose={() => setConfirmRotate(false)}
       />

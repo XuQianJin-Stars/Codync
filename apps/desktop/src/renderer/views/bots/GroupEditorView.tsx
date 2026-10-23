@@ -120,11 +120,12 @@ export function GroupEditorView({ group }: { group: Bot }) {
 /** The one "Delete <bot>?" confirmation (kit `deleteBotConfirmation`). */
 function DeleteBotDialog({ bot, onClose, onDeleted }: { bot: Bot | null; onClose: () => void; onDeleted: () => void }) {
   const store = useStore()
+  const tr = useTr()
   return (
     <Dialog
       open={bot !== null}
       title={`Delete ${bot?.name ?? 'bot'}?`}
-      message={bot && isGroup(bot) ? 'Its bots and their own chats stay.' : 'Files it changed on your computer stay as they are.'}
+      message={tr(bot && isGroup(bot) ? 'Its bots and their own chats stay.' : 'Files it changed on your computer stay as they are.')}
       actions={[
         {
           title: 'Delete bot and its conversation',

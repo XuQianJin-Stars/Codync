@@ -256,8 +256,8 @@ export function RoutineEditorView({ botId, routine, saved }: {
 
       <Dialog
         open={confirmDelete}
-        title="Delete routine?"
-        message="This deletes the routine and stops its future runs. This can't be undone."
+        title={tr('Delete routine?')}
+        message={tr("This deletes the routine and stops its future runs. This can't be undone.")}
         actions={[
           {
             title: 'Delete routine',

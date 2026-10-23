@@ -163,7 +163,7 @@ import kotlinx.serialization.json.put
         "Signs out of every account and forgets every computer on this phone, then shows the welcome again. Your computers keep their bots and chats; pair again to use them.") {
         listOf(DialogAction("Start over", destructive = true, action = store::startOver))
     }
-    CodyncDialog("Remove ${paired?.name ?: "computer"}?", confirmForget, { confirmForget = false },
+    CodyncDialog(tr("Remove {name}?").replace("{name}", paired?.name ?: "computer"), confirmForget, { confirmForget = false },
         "Its bots and conversations stay on that computer. You can pair again any time.") {
         listOf(DialogAction("Remove", destructive = true, action = store::removeComputer))
     }

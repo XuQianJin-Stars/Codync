@@ -162,7 +162,7 @@ struct SettingsView: View {
         .codyncSheet(item: $access) { target in
             AccessRequestView(computer: target.computer, pending: accounts.pendingAccess[target.id])
         }
-        .codyncDialog("Remove \(confirmForget?.name ?? "computer")?",
+        .codyncDialog(L10n.tr("Remove {name}?").replacingOccurrences(of: "{name}", with: confirmForget?.name ?? "computer"),
                       isPresented: Binding(get: { confirmForget != nil }, set: { if !$0 { confirmForget = nil } }),
                       message: "Its bots and conversations stay on that computer. You can pair again any time.") {
             [DialogAction("Remove", destructive: true) {

@@ -69,8 +69,8 @@ export function AuthorizedDevicesSection({ store }: { store: BotStore }) {
       </CardSection>
       <Dialog
         open={confirmRevoke !== null}
-        title={`Revoke ${confirmRevoke?.name ?? 'device'}?`}
-        message="It disconnects right away and has to pair or ask again."
+        title={tr('Revoke {name}?').replaceAll('{name}', confirmRevoke?.name ?? 'device')}
+        message={tr('It disconnects right away and has to pair or ask again.')}
         actions={confirmRevoke ? [{ title: 'Revoke access', destructive: true, action: () => void revoke(confirmRevoke) }] : []}
         onClose={() => setConfirmRevoke(null)}
       />

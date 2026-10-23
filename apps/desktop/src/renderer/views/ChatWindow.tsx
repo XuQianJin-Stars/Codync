@@ -135,8 +135,8 @@ export function ChatWindow() {
       </Sheet>
       <Dialog
         open={confirmReset}
-        title="Reset all data?"
-        message="Signs out every account and deletes this computer's bots, conversations, keys and settings. Codync then starts over from the welcome screen."
+        title={tr('Reset all data?')}
+        message={tr("Signs out every account and deletes this computer's bots, conversations, keys and settings. Codync then starts over from the welcome screen.")}
         actions={[{ title: 'Reset everything', destructive: true, action: () => void window.codync.app.resetAllData() }]}
         onClose={() => setConfirmReset(false)}
       />
@@ -442,19 +442,19 @@ function ChatSplitView() {
       </Sheet>
       <Dialog
         open={newSessionBot !== null}
-        title="Start a new session?"
-        message="The conversation stays here, but the agent starts with a fresh context."
+        title={tr('Start a new session?')}
+        message={tr('The conversation stays here, but the agent starts with a fresh context.')}
         actions={newSessionBot ? [{ title: 'New session', action: () => newSessionBot.store.newSession(newSessionBot.bot.id) }] : []}
         onClose={() => setNewSessionBot(null)}
       />
       <Dialog
         open={confirmDelete !== null}
         title={`Delete ${confirmDelete?.bot.name ?? 'bot'}?`}
-        message="Files it changed on your computer stay as they are."
+        message={tr('Files it changed on your computer stay as they are.')}
         actions={confirmDelete ? [{ title: 'Delete bot and its conversation', destructive: true, action: () => confirmDelete.store.delete(confirmDelete.bot) }] : []}
         onClose={() => setConfirmDelete(null)}
       />
-      <Dialog open={errorMessage !== null} title="Something went wrong" message={errorMessage} actions={[]} cancel="OK" onClose={() => app.clearErrors()} />
+      <Dialog open={errorMessage !== null} title={tr('Something went wrong')} message={errorMessage} actions={[]} cancel="OK" onClose={() => app.clearErrors()} />
     </div>
   )
 }
