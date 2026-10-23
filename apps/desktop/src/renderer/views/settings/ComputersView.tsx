@@ -129,15 +129,11 @@ function ManagedComputerCard({ store, ssh: overSSH }: { store: BotStore; ssh: bo
     if (!relayFocused && !savingRelay.current) setRelayAddress(cloud?.url ?? '')
   }, [cloud?.url, relayFocused])
   const saveRelay = () => {
-    const next = relayAddress.trim().replace(/\/$/, '')
-    if (next === (cloud?.url ?? '').replace(/\/$/, '')) return
     savingRelay.current = true
     run(async () => {
       try {
-        await (await store.ready()).call('setCloudUrl', { url: next })
-      } catch (e) {
-        store.setError(errorText(e))
-        setRelayAddress(cloud?.url ?? '')
+        const kept = await app.cloud.setCloudUrl(store, relayAddress)
+        if (!kept) setRelayAddress(store.cloud?.url ?? '')
       } finally {
         savingRelay.current = false
       }
