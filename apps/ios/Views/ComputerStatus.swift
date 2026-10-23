@@ -35,7 +35,7 @@ struct RouteIcon: View {
         case .direct:
             Image(systemName: "wifi").accessibilityLabel("Wi-Fi or Tailscale")
         case .relay:
-            Image(systemName: "cloud").accessibilityLabel(L10n.tr(RelayCopy.through(cloud)))
+            Image(systemName: "cloud").accessibilityLabel(L10n.tr(RelayCopy.through(cloud: cloud)))
         case nil:
             EmptyView()
         }
