@@ -1,7 +1,8 @@
 // WeChat login is not OpenID Connect: it uses appid/secret, returns no id_token and
 // usually no email. Clerk's custom social connection only speaks OIDC, so this bridge
 // shows WeChat's QR page and signs an id_token whose subject is the WeChat unionid
-// (openid when the open platform hasn't issued a unionid).
+// (openid when the open platform hasn't issued a unionid). The subject chosen for an
+// openid is kept, and the access token lives for an hour after it is issued.
 
 import type { Ctx } from "./routes/common";
 import type { Env } from "./index";
@@ -169,7 +170,7 @@ async function callback(c: Ctx, secrets: Secrets, fetchImpl: typeof fetch): Prom
     .first<Txn>();
   if (!txn) return text(400, "This sign-in can't continue.");
   const code = c.url.searchParams.get("code");
-  const profile = code ? await wechatProfile(secrets, code, fetchImpl) : null;
+  const profile = code ? await wechatProfile(c.env.DB, secrets, code, fetchImpl) : null;
   if (!profile) return redirectTo(withParams(txn.redirect_uri, { error: "access_denied", state: txn.clerk_state }));
   const authCode = randomId();
   const saved = await c.env.DB.prepare(
@@ -205,10 +206,12 @@ async function token(c: Ctx, secrets: Secrets): Promise<Response> {
     }
   }
   const access = randomId();
+  const accessExpires = c.now + TOKEN_TTL_S * 1000;
   const saved = await c.env.DB.prepare(
-    "UPDATE wechat_oidc SET consumed_at = ?, access_token = ? WHERE state = ? AND consumed_at IS NULL",
+    `UPDATE wechat_oidc SET consumed_at = ?, access_token = ?, access_expires_at = ?
+     WHERE state = ? AND consumed_at IS NULL`,
   )
-    .bind(c.now, access, txn.state)
+    .bind(c.now, access, accessExpires, txn.state)
     .run();
   if (!saved.meta.changes) return oauthError(400, "invalid_grant");
   const signer = await signerFor(secrets.privateJwk);
@@ -231,7 +234,8 @@ async function userinfo(c: Ctx): Promise<Response> {
   const access = header.startsWith("Bearer ") ? header.slice("Bearer ".length).trim() : "";
   if (!bounded(access, 128)) return oauthError(401, "invalid_token");
   const txn = await c.env.DB.prepare(
-    "SELECT subject, name, picture FROM wechat_oidc WHERE access_token = ? AND consumed_at IS NOT NULL AND expires_at > ?",
+    `SELECT subject, name, picture FROM wechat_oidc
+     WHERE access_token = ? AND consumed_at IS NOT NULL AND access_expires_at > ?`,
   )
     .bind(access, c.now)
     .first<{ subject: string; name: string | null; picture: string | null }>();
@@ -239,7 +243,7 @@ async function userinfo(c: Ctx): Promise<Response> {
   return json(200, { sub: txn.subject, ...(txn.name ? { name: txn.name } : {}), ...(txn.picture ? { picture: txn.picture } : {}) });
 }
 
-async function wechatProfile(secrets: Secrets, code: string, fetchImpl: typeof fetch): Promise<Profile | null> {
+async function wechatProfile(db: D1Database, secrets: Secrets, code: string, fetchImpl: typeof fetch): Promise<Profile | null> {
   try {
     const tokenURL = new URL("https://api.weixin.qq.com/sns/oauth2/access_token");
     tokenURL.searchParams.set("appid", secrets.appId);
@@ -247,22 +251,46 @@ async function wechatProfile(secrets: Secrets, code: string, fetchImpl: typeof f
     tokenURL.searchParams.set("code", code);
     tokenURL.searchParams.set("grant_type", "authorization_code");
     const token = await readJson(fetchImpl, tokenURL);
-    if (!token || token.errcode || typeof token.openid !== "string") return null;
-    let info: Record<string, unknown> = {};
-    if (typeof token.access_token === "string") {
-      const infoURL = new URL("https://api.weixin.qq.com/sns/userinfo");
-      infoURL.searchParams.set("access_token", token.access_token);
-      infoURL.searchParams.set("openid", token.openid);
-      infoURL.searchParams.set("lang", "zh_CN");
-      info = (await readJson(fetchImpl, infoURL)) ?? {};
-    }
-    const subject = wechatId(info.unionid) ?? wechatId(token.unionid) ?? wechatId(info.openid) ?? wechatId(token.openid);
-    if (!subject) return null;
-    return { subject, name: displayName(info.nickname), picture: httpsPicture(info.headimgurl) };
+    if (!token || token.errcode) return null;
+    const openid = wechatId(token.openid);
+    if (!openid) return null;
+    const info = await wechatUserInfo(token, openid, fetchImpl);
+    const unionid = (info ? wechatId(info.unionid) : null) ?? wechatId(token.unionid);
+    return {
+      subject: await stableSubject(db, openid, unionid),
+      name: info ? displayName(info.nickname) : null,
+      picture: info ? httpsPicture(info.headimgurl) : null,
+    };
   } catch (error) {
     console.error("wechat profile", { error: error instanceof Error ? error.name : "failed" });
     return null;
   }
+}
+
+async function wechatUserInfo(
+  token: Record<string, unknown>,
+  openid: string,
+  fetchImpl: typeof fetch,
+): Promise<Record<string, unknown> | null> {
+  if (typeof token.access_token !== "string") return null;
+  const infoURL = new URL("https://api.weixin.qq.com/sns/userinfo");
+  infoURL.searchParams.set("access_token", token.access_token);
+  infoURL.searchParams.set("openid", openid);
+  infoURL.searchParams.set("lang", "zh_CN");
+  const info = await readJson(fetchImpl, infoURL);
+  if (!info || (typeof info.errcode === "number" && info.errcode !== 0)) return null;
+  return info;
+}
+
+/** First subject issued for this openid. A failed profile must not switch it. */
+async function stableSubject(db: D1Database, openid: string, unionid: string | null): Promise<string> {
+  const chosen = unionid ?? openid;
+  await db
+    .prepare("INSERT INTO wechat_subject (openid, subject) VALUES (?, ?) ON CONFLICT(openid) DO NOTHING")
+    .bind(openid, chosen)
+    .run();
+  const stored = await db.prepare("SELECT subject FROM wechat_subject WHERE openid = ?").bind(openid).first<{ subject: string }>();
+  return stored?.subject || chosen;
 }
 
 async function readJson(fetchImpl: typeof fetch, url: URL): Promise<Record<string, unknown> | null> {

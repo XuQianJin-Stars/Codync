@@ -138,6 +138,56 @@ describe("WeChat sign-in", () => {
     expect(refusal.headers.get("Location")).not.toContain("invalid code");
   });
 
+  it("keeps the unionid when a later profile request fails", async () => {
+    const token = { access_token: "wx-access", openid: "openid-stable" };
+    expect(await issuedSubject(token, { unionid: "union-stable", nickname: "小林" })).toBe("union-stable");
+    expect(await issuedSubject(token, { errcode: 503, errmsg: "busy", unionid: "other-union" })).toBe("union-stable");
+    expect(await issuedSubject(token, {}, 503)).toBe("union-stable");
+  });
+
+  it("does not take a subject from a failed profile", async () => {
+    const token = { access_token: "wx-access", openid: "openid-first-fail" };
+    expect(await issuedSubject(token, { errcode: 40001, unionid: "decoy-union" })).toBe("openid-first-fail");
+    expect(await issuedSubject(token, { unionid: "union-later" })).toBe("openid-first-fail");
+  });
+
+  it("honors the access token for an hour after the sign-in code has expired", async () => {
+    const started = await start({ nonce: "nonce-hour" });
+    const state = new URL(started.headers.get("Location") ?? "").searchParams.get("state");
+    const back = await handleWechatOidc(
+      ctx(callbackUrl(state, "wx-hour")),
+      scripted({ access_token: "wx-access", openid: "openid-hour", unionid: "union-hour" }, {}).fetch,
+    );
+    const code = new URL(back.headers.get("Location") ?? "").searchParams.get("code") ?? "";
+    const redeemed = await redeem(code);
+    expect(redeemed.status).toBe(200);
+    const body = await json<{ access_token: string; expires_in: number }>(redeemed);
+    expect(body.expires_in).toBe(60 * 60);
+    const row = await env.DB.prepare("SELECT access_expires_at AS deadline FROM wechat_oidc WHERE access_token = ?")
+      .bind(body.access_token)
+      .first<{ deadline: number }>();
+    expect(row?.deadline).toBeGreaterThan(Date.now() + 59 * 60 * 1000);
+
+    await env.DB.prepare("UPDATE wechat_oidc SET expires_at = ? WHERE access_token = ?").bind(Date.now() - 1, body.access_token).run();
+    const profile = await SELF.fetch(`${ORIGIN}/v1/wechat/oidc/userinfo`, {
+      headers: { Authorization: `Bearer ${body.access_token}` },
+    });
+    expect(profile.status).toBe(200);
+    expect(await json(profile)).toMatchObject({ sub: "union-hour" });
+    await worker.scheduled(createScheduledController({ cron: "*/15 * * * *" }), env);
+    expect(await env.DB.prepare("SELECT access_token FROM wechat_oidc WHERE access_token = ?").bind(body.access_token).first()).toEqual({
+      access_token: body.access_token,
+    });
+
+    await env.DB.prepare("UPDATE wechat_oidc SET access_expires_at = ? WHERE access_token = ?").bind(Date.now() - 1, body.access_token).run();
+    const expired = await SELF.fetch(`${ORIGIN}/v1/wechat/oidc/userinfo`, {
+      headers: { Authorization: `Bearer ${body.access_token}` },
+    });
+    expect(expired.status).toBe(401);
+    await worker.scheduled(createScheduledController({ cron: "*/15 * * * *" }), env);
+    expect(await env.DB.prepare("SELECT access_token FROM wechat_oidc WHERE access_token = ?").bind(body.access_token).first()).toBeNull();
+  });
+
   it("rejects an expired code and the sweep drops expired rows", async () => {
     const started = await start({ nonce: "nonce-old" });
     const state = new URL(started.headers.get("Location") ?? "").searchParams.get("state");
@@ -203,15 +253,32 @@ async function redeem(code: string, extra: { client_secret?: string; code_verifi
   return SELF.fetch(`${ORIGIN}/v1/wechat/oidc/token`, { method: "POST", headers, body });
 }
 
-function scripted(token: Record<string, unknown>, user: Record<string, unknown>): { fetch: typeof fetch; urls: string[] } {
+function scripted(
+  token: Record<string, unknown>,
+  user: Record<string, unknown>,
+  userStatus = 200,
+): { fetch: typeof fetch; urls: string[] } {
   const urls: string[] = [];
   const fetchImpl: typeof fetch = async (input) => {
     const url = String(input);
     urls.push(url);
-    const body = url.includes("/sns/userinfo") ? user : token;
-    return new Response(JSON.stringify(body), { status: 200, headers: { "Content-Type": "application/json" } });
+    const profile = url.includes("/sns/userinfo");
+    return new Response(JSON.stringify(profile ? user : token), {
+      status: profile ? userStatus : 200,
+      headers: { "Content-Type": "application/json" },
+    });
   };
   return { fetch: fetchImpl, urls };
+}
+
+async function issuedSubject(token: Record<string, unknown>, user: Record<string, unknown>, userStatus = 200): Promise<string> {
+  const started = await start({ nonce: `nonce-${crypto.randomUUID()}` });
+  const state = new URL(started.headers.get("Location") ?? "").searchParams.get("state");
+  const back = await handleWechatOidc(ctx(callbackUrl(state, `wx-${crypto.randomUUID()}`)), scripted(token, user, userStatus).fetch);
+  const code = new URL(back.headers.get("Location") ?? "").searchParams.get("code") ?? "";
+  const redeemed = await redeem(code);
+  expect(redeemed.status).toBe(200);
+  return String((await verifiedClaims((await json<{ id_token: string }>(redeemed)).id_token)).sub);
 }
 
 function ctx(url: URL, overrides: Partial<typeof env> = {}): Ctx {
