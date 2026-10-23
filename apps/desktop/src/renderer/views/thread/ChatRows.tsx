@@ -231,7 +231,7 @@ export function WorkingIndicator({ bot }: { bot: Bot }) {
       <div className="working">
         <HStack as="span" gap={8}>
           <ThinkingOrb state={waiting ? 'listening' : 'working'} size={16} color={waiting ? 'var(--warning)' : 'var(--secondary)'} />
-          <Text size="subheadline" tone={waiting ? 'attention' : 'secondary'} truncate>{bot.activity || tr(`Working…`)}</Text>
+          <Text size="subheadline" tone={waiting ? 'attention' : 'secondary'} truncate>{tr(bot.activity || 'Working…')}</Text>
           {bot.startedAt ? <Timer since={bot.startedAt} /> : null}
         </HStack>
       </div>

@@ -68,7 +68,7 @@ export function FallbacksRow({ draft, bot, onChange }: { draft: BotDraft; bot: B
         <Text tone="secondary">{tr(`No fallbacks yet.`)}</Text>
       )}
       <Text size="caption" tone="secondary">
-        {tr('If {agent} runs out of usage or can\'t answer, the bot carries on with the next one. Chat, memory and workspace carry over.').replace(tr(`{agent}`), store.backendName(draft.backend))}
+        {tr('If {agent} runs out of usage or can\'t answer, the bot carries on with the next one. Chat, memory and workspace carry over.').replace('{agent}', store.backendName(draft.backend))}
       </Text>
       <Dialog open={about} title="Fallbacks" message={ABOUT} actions={[]} cancel="OK" onClose={() => setAbout(false)} />
       <FormSheet open={adding} onClose={() => setAdding(false)} width={460} height={420}>

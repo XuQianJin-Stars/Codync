@@ -84,6 +84,7 @@ export function SettingsView({ page: initial }: { page: SettingsPage }) {
 }
 
 function PageContent({ page }: { page: SettingsPage }) {
+  const tr = useTr()
   const app = useApp()
   switch (page) {
     case 'access':
@@ -99,7 +100,7 @@ function PageContent({ page }: { page: SettingsPage }) {
         </StoreContext.Provider>
       ) : (
         <CardForm>
-          <Text tone="secondary">Voice keys are kept by {thisMac}tr(`s host, which isn`)t running.</Text>
+          <Text tone="secondary">{tr(isMac ? "Voice keys are kept by This Mac's host, which isn't running." : `Voice keys are kept by ${thisMac}'s host, which isn't running.`)}</Text>
         </CardForm>
       )
     case 'usage':

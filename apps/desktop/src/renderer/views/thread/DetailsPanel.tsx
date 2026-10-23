@@ -127,7 +127,7 @@ function GroupMembersList({ group, editGroup }: { group: Bot; editGroup: () => v
             <BotAvatar bot={bot} size={32} />
             <VStack as="span" gap={1} grow>
               <span className="member-name">{bot.name}</span>
-              {isWorking(bot) ? <Text size="compactSecondary" tone="secondary" className="member-name">{bot.activity || tr(`Working…`)}</Text> : null}
+              {isWorking(bot) ? <Text size="compactSecondary" tone="secondary" className="member-name">{tr(bot.activity || 'Working…')}</Text> : null}
             </VStack>
           </button>
           {group.members.length > 1 ? <IconButton title={`Remove ${bot.name} from the group`} icon="xmark" onClick={() => store.removeMember(group, bot.id)} /> : null}

@@ -39,7 +39,7 @@ function Preview({ bot, store }: { bot: Bot; store: BotStore }) {
     return (
       <HStack as="span" gap={6} shrink>
         <ThinkingOrb state="listening" size={16} color="var(--warning)" />
-        <Text size="callout" tone="attention" truncate>{bot.activity || tr(`Needs your approval`)}</Text>
+        <Text size="callout" tone="attention" truncate>{tr(bot.activity || 'Needs your approval')}</Text>
       </HStack>
     )
   }
@@ -47,7 +47,7 @@ function Preview({ bot, store }: { bot: Bot; store: BotStore }) {
     return (
       <HStack as="span" gap={6} shrink>
         <ThinkingOrb size={13} color="var(--secondary)" />
-        <Text size="callout" tone="secondary" truncate>{bot.activity || tr(`Working…`)}</Text>
+        <Text size="callout" tone="secondary" truncate>{tr(bot.activity || 'Working…')}</Text>
       </HStack>
     )
   }

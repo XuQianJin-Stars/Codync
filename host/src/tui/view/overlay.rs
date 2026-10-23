@@ -44,16 +44,22 @@ pub(super) fn overlay(buf: &mut Buffer, area: Rect, app: &mut App, top: &Overlay
             let t = theme();
             let r = centered(area, 62, 8);
             let inner = frame_box(buf, r, t.red, t.panel, None);
-            put(buf, inner.x, inner.y, inner.width, &c.title, t.red.patch(t.panel).add_modifier(Modifier::BOLD));
-            put(buf, inner.x, inner.y + 1, inner.width, &c.detail, t.text.patch(t.panel));
-            put(buf, inner.x, inner.y + 2, inner.width, &c.note, t.secondary.patch(t.panel));
+            // The title names the bot. The detail and note are interface copy.
+            let title = super::super::l10n::tr(&c.title);
+            let detail = super::super::l10n::tr(&c.detail);
+            let note = super::super::l10n::tr(&c.note);
+            let button = super::super::l10n::tr(c.button);
+            let cancel = super::super::l10n::tr("Cancel");
+            put(buf, inner.x, inner.y, inner.width, title.as_ref(), t.red.patch(t.panel).add_modifier(Modifier::BOLD));
+            put(buf, inner.x, inner.y + 1, inner.width, detail.as_ref(), t.text.patch(t.panel));
+            put(buf, inner.x, inner.y + 2, inner.width, note.as_ref(), t.secondary.patch(t.panel));
             let danger = if t.color {
                 Style::default().fg(t.on_color).bg(rgb(0xF0A7A7)).add_modifier(Modifier::BOLD)
             } else {
                 t.sel
             };
-            let x = put(buf, inner.x, inner.y + 4, 30, &format!(" ↵ {} ", c.button), danger) + 1;
-            put(buf, x, inner.y + 4, 14, " esc Cancel ", t.text.patch(t.btn).add_modifier(Modifier::BOLD));
+            let x = put(buf, inner.x, inner.y + 4, 30, &format!(" ↵ {button} "), danger) + 1;
+            put(buf, x, inner.y + 4, 14, &format!(" esc {cancel} "), t.text.patch(t.btn).add_modifier(Modifier::BOLD));
         }
         Overlay::NewBot(n) => new_bot_view(buf, area, n),
         Overlay::Folder(p) => {

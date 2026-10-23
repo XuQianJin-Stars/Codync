@@ -166,8 +166,8 @@ export function Dialog({ open, title, message, actions, cancel = 'Cancel', onClo
       <div className="dialog-dim" onClick={() => cancel !== null && onClose()} />
       <div className="dialog-card" data-modal-card tabIndex={-1}>
         <div className="dialog-text">
-          <Text as="h2" id={`${id}-title`} size="title3" weight="semibold">{shownContent.title}</Text>
-          {shownContent.message ? <Text as="div" id={`${id}-message`} size="body" tone="secondary">{shownContent.message}</Text> : null}
+          <Text as="h2" id={`${id}-title`} size="title3" weight="semibold">{tr(shownContent.title)}</Text>
+          {shownContent.message ? <Text as="div" id={`${id}-message`} size="body" tone="secondary">{tr(shownContent.message)}</Text> : null}
         </div>
         <div className="dialog-buttons">
           {cancel !== null ? (
