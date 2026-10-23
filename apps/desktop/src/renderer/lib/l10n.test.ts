@@ -104,6 +104,12 @@ test('known chrome becomes Chinese and everything else stays', () => {
   assert.equal(translate('Support', 'zh', false), '支持')
   assert.equal(translate('Devices that can use FORWARDXU-MC3', 'zh', false), '可以使用 FORWARDXU-MC3 的设备')
   assert.equal(translate('Paired with a QR code · seen 10:54', 'zh', false), '通过二维码配对 · 10:54 见过')
+  assert.equal(translate("CodeBuddy Code's own memory", 'zh', false), 'CodeBuddy Code 自己的记忆')
+  assert.equal(translate("About {name}'s own memory", 'zh', false), '关于 {name} 自己的记忆')
+  assert.equal(translate('A memory of its own', 'zh', false), '它自己的记忆')
+  assert.equal(translate('Usage', 'zh', false), '用量')
+  assert.equal(translate('Computers & devices', 'zh', false), '电脑和设备')
+  assert.equal(translate('Reachable from anywhere through Cloudflare (encrypted).', 'zh', false), '通过 Cloudflare 随时随地连接（已加密）。')
   assert.equal(translate('Use Anthropic Console (API usage billing)', 'zh', false), '使用 Anthropic 控制台（按 API 用量计费）')
   assert.equal(translate('12 pt (Default)', 'zh', false), '12 pt（默认）')
   assert.equal(

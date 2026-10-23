@@ -348,9 +348,10 @@ function PluginToggles({ title, empty, items, selection, onChange, onInfo }: {
   /** Shows an item's details from an info button beside its switch. */
   onInfo?: (item: { id: string; name: string; detail: string }) => void
 }) {
+  const tr = useTr()
   return (
     <CardSection title={title}>
-      {items.length ? null : <Text tone="secondary">{empty}</Text>}
+      {items.length ? null : <Text tone="secondary">{tr(empty)}</Text>}
       {items.map((item) => {
         const row = (
           <SwitchRow

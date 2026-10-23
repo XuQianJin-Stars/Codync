@@ -44,7 +44,7 @@ export function AnalyticsSheet() {
               </IconSlot>
               <VStack gap={2} grow className="settings-stack">
                 <span>{tr(d.title)}</span>
-                <Text size="footnote" tone="secondary">{d.detail}</Text>
+                <Text size="footnote" tone="secondary">{tr(d.detail)}</Text>
               </VStack>
             </HStack>
           ))}

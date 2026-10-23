@@ -122,8 +122,8 @@ function ManagedComputerCard({ store, ssh: overSSH }: { store: BotStore; ssh: bo
     })
 
   const cloudLine = !cloud?.enabled
-    ? 'Off: only Wi-Fi and Tailscale reach it, nothing goes through Cloudflare.'
-    : (cloud.lastError ?? (cloud.connected ? 'Reachable from anywhere through Cloudflare (encrypted).' : 'Connecting to Cloudflare…'))
+    ? tr('Off: only Wi-Fi and Tailscale reach it, nothing goes through Cloudflare.')
+    : (cloud.lastError ?? tr(cloud.connected ? 'Reachable from anywhere through Cloudflare (encrypted).' : 'Connecting to Cloudflare…'))
 
   const accountLine = (
     <HStack key="account" gap={8} className="settings-row settings-appear">
@@ -132,7 +132,7 @@ function ManagedComputerCard({ store, ssh: overSSH }: { store: BotStore; ssh: bo
         {owner
           ? owner.userId === account.user?.userId
             ? tr(`In your account`)
-            : `In ${owner.email ?? tr(`another`)} account`
+            : tr('In {name} account').replaceAll('{name}', owner.email ?? tr('another'))
           : account.isSignedIn
             ? tr(`Not in your account`)
             : tr(`Sign in to add it to your account`)}
@@ -158,7 +158,7 @@ function ManagedComputerCard({ store, ssh: overSSH }: { store: BotStore; ssh: bo
             <VStack grow className="settings-stack">
               <Text size="headline">{name}</Text>
               <Text size="caption" tone="secondary">
-                {`${tr(overSSH ? tr(`Over SSH`) : isMacLabel)} · ${tr(statusText(store))}`}
+                {`${tr(overSSH ? 'Over SSH' : isMacLabel)} · ${tr(statusText(store))}`}
               </Text>
             </VStack>
             {overSSH ? (
@@ -207,7 +207,7 @@ function ManagedComputerCard({ store, ssh: overSSH }: { store: BotStore; ssh: bo
         </StoreContext.Provider>
       </Sheet>
       <Sheet open={showPairing} onClose={() => setShowPairing(false)} width={340}>
-        <ModalHeader icon="qrcode" title={`Pair iPhone with ${name}`} />
+        <ModalHeader icon="qrcode" title={tr('Pair iPhone with {name}').replaceAll('{name}', name)} />
         <PairingPanel store={store} />
       </Sheet>
       <Dialog
@@ -230,6 +230,7 @@ function ManagedComputerCard({ store, ssh: overSSH }: { store: BotStore; ssh: bo
 
 /** An account computer this app isn't authorized on, or one it uses under an earlier identity (`olderCopy`). */
 function AccountComputerRow({ computer, olderCopy, onRemove }: { computer: CloudComputer; olderCopy: boolean; onRemove: () => void }) {
+  const tr = useTr()
   return (
     <div className="settings-card settings-appear">
       <div className="settings-row">
@@ -238,7 +239,7 @@ function AccountComputerRow({ computer, olderCopy, onRemove }: { computer: Cloud
         </span>
         <div className="settings-stack">
           <Text size="callout" weight="medium" tone={olderCopy ? 'secondary' : undefined}>{computer.name}</Text>
-          <Text size="caption" tone={olderCopy ? 'tertiary' : 'secondary'}>{accountComputerStatus(computer, olderCopy)}</Text>
+          <Text size="caption" tone={olderCopy ? 'tertiary' : 'secondary'}>{tr(accountComputerStatus(computer, olderCopy))}</Text>
         </div>
         <Spacer />
         {olderCopy ? <IconButton title="Remove from account" icon="trash" onClick={onRemove} /> : null}

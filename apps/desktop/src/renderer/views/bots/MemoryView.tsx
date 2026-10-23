@@ -56,9 +56,9 @@ export function MemoryCard({ botId }: { botId: string }) {
           Use what your bots share
         </Switch>}
         {view && bot && section === 'bot' && bot.harnessMemory !== null && <HStack gap={4}>
-          <span>{harness}'s own memory</span>
-          <IconButton title={`About ${harness}'s own memory`} icon="info.circle" onClick={() => setInfo('harness')} />
-          <Switch on={bot.harnessMemory} onChange={(on) => host.setHarnessMemory(bot, on)} label={`${harness}'s own memory`} className="memory-harness-switch" />
+          <span>{tr("{name}'s own memory").replaceAll('{name}', harness)}</span>
+          <IconButton title={tr("About {name}'s own memory").replaceAll('{name}', harness)} icon="info.circle" onClick={() => setInfo('harness')} />
+          <Switch on={bot.harnessMemory} onChange={(on) => host.setHarnessMemory(bot, on)} label={tr("{name}'s own memory").replaceAll('{name}', harness)} className="memory-harness-switch" />
         </HStack>}
         {layer && [
           <p key="note" className="memory-muted">{tr(section === 'yours'
@@ -86,11 +86,11 @@ export function MemoryCard({ botId }: { botId: string }) {
           </div>),
         ]}
         {view?.projectMemory && section === 'harness' && <div className="memory-content">
-          <p className="memory-muted">Claude Code's own notes, read-only here.</p>
+          <p className="memory-muted">{tr("Claude Code's own notes, read-only here.")}</p>
           <small className="memory-muted">{view.projectMemory.path}</small>
           {view.projectMemory.text
             ? <pre className="memory-history">{view.projectMemory.text}</pre>
-            : <div className="memory-empty"><Icon name="brain" size={20} color="var(--tertiary)" /><span>Nothing yet. Claude Code's notes show up here once it saves some.</span></div>}
+            : <div className="memory-empty"><Icon name="brain" size={20} color="var(--tertiary)" /><span>{tr("Nothing yet. Claude Code's notes show up here once it saves some.")}</span></div>}
         </div>}
       </CardSection>
     </div>
@@ -98,7 +98,7 @@ export function MemoryCard({ botId }: { botId: string }) {
       {file && <MemoryFileSheet memory={memory} target={file} />}
     </Sheet>
     <FormSheet open={info !== null} onClose={() => setInfo(null)} height={560}>
-      {info === 'harness' && <MemoryInfoSheet icon="brain" title={`${harness}'s own memory`} points={harnessInfo(harness, bot?.backend === 'claude')} />}
+      {info === 'harness' && <MemoryInfoSheet icon="brain" title={tr("{name}'s own memory").replaceAll('{name}', harness)} points={harnessInfo(harness, bot?.backend === 'claude', tr)} />}
       {info === 'dreams' && <MemoryInfoSheet icon="moon" title="Dreaming" points={dreamsInfo} />}
     </FormSheet>
   </>

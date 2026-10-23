@@ -824,6 +824,8 @@
   "Codync can't show it; look in {name} itself.": "Codync 显示不了，请到 {name} 自己里面看。",
   "Dreaming": "梦境",
   "{name}'s own memory": "{name} 自己的记忆",
+  "About {name}'s own memory": "关于 {name} 自己的记忆",
+  "Turn on {name}'s own memory?": "打开 {name} 自己的记忆？",
   "Tidying between chats": "对话之间整理",
   "Adds and takes out": "添加和删去",
   "Only your words": "只取你的原话",

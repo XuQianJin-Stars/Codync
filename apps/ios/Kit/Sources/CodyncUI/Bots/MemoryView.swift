@@ -90,14 +90,15 @@ struct MemoryCard: View {
         }
         if !shared, let bot, let on = bot.harnessMemory {
             let name = host.backendName(bot.backend)
+            let own = L10n.tr("{name}'s own memory").replacingOccurrences(of: "{name}", with: name)
             HStack(spacing: 4) {
-                Text(L10n.tr("\(name)'s own memory")).lineLimit(1).layoutPriority(1)
-                IconButton("About \(name)'s own memory", systemImage: "info.circle") {
+                Text(own).lineLimit(1).layoutPriority(1)
+                IconButton(L10n.tr("About {name}'s own memory").replacingOccurrences(of: "{name}", with: name), systemImage: "info.circle") {
                     withAnimation(Motion.layout) { info = .harness }
                 }
                 Toggle(isOn: Binding(get: { on }, set: { host.setHarnessMemory(bot, $0) })) { EmptyView() }
                     .toggleStyle(.codync)
-                    .accessibilityLabel("\(name)'s own memory")
+                    .accessibilityLabel(own)
             }
         }
         Text(L10n.tr(shared

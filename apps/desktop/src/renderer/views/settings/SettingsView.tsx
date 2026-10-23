@@ -60,7 +60,7 @@ export function SettingsView({ page: initial }: { page: SettingsPage }) {
                 <IconSlot width={18} tone="secondary">
                   <Icon name={item.icon} size={13} />
                 </IconSlot>
-                <Text truncate grow>{item.label ?? item.title}</Text>
+                <Text truncate grow>{tr(item.label ?? item.title)}</Text>
                 {item.id === 'computers' && app.approvals.length > 0 ? (
                   <Text size="caption" weight="semibold" tone="secondary">{app.approvals.length}</Text>
                 ) : null}
@@ -71,7 +71,7 @@ export function SettingsView({ page: initial }: { page: SettingsPage }) {
       </nav>
       <div className="settings-divider" />
       <div className="settings-main">
-        <Text as="div" size={24} weight="semibold" tone="text" className="settings-title">{current.title}</Text>
+        <Text as="div" size={24} weight="semibold" tone="text" className="settings-title">{tr(current.title)}</Text>
         <div key={page} className="settings-page">
           <PageContent page={page} />
         </div>

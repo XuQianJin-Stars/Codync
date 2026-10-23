@@ -44,7 +44,7 @@ export function AuthorizedDevicesSection({ store }: { store: BotStore }) {
 
   return (
     <>
-      <CardSection title={`Devices that can use ${name}`}>
+      <CardSection title={tr('Devices that can use {name}').replaceAll('{name}', name)}>
         {devices === null
           ? [<Spinner key="loading" />]
           : 'error' in devices
@@ -60,7 +60,7 @@ export function AuthorizedDevicesSection({ store }: { store: BotStore }) {
                     </IconSlot>
                     <VStack grow className="settings-stack">
                       <span>{device.name}</span>
-                      <Text size="caption" tone="tertiary">{deviceDetail(device)}</Text>
+                      <Text size="caption" tone="tertiary">{deviceDetail(device, tr)}</Text>
                     </VStack>
                     <IconButton title="Revoke access" icon="xmark.circle" onClick={() => setConfirmRevoke(device)} />
                   </HStack>
@@ -78,9 +78,10 @@ export function AuthorizedDevicesSection({ store }: { store: BotStore }) {
   )
 }
 
-function deviceDetail(device: AuthorizedDevice) {
-  const parts = [device.source === 'account' ? 'Approved through the account' : 'Paired with a QR code']
-  if (device.connected) parts.push('connected')
-  else if (device.lastSeenAt) parts.push(`seen ${relativeDay(new Date(device.lastSeenAt))}`)
-  return parts.join(' · ')
+function deviceDetail(device: AuthorizedDevice, tr: (text: string) => string) {
+  const paired = device.source === 'account' ? 'Approved through the account' : 'Paired with a QR code'
+  if (device.connected) return tr(`${paired} · connected`)
+  if (!device.lastSeenAt) return tr(paired)
+  const when = relativeDay(new Date(device.lastSeenAt))
+  return tr(`${paired} · seen {when}`).replaceAll('{when}', when === 'Yesterday' ? tr('Yesterday') : when)
 }
