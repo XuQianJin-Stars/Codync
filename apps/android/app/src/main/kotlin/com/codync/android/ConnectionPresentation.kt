@@ -5,6 +5,7 @@ import com.codync.android.core.Computer
 import com.codync.android.core.ConnectionRoute
 import com.codync.android.core.HostRoute
 import com.codync.android.core.LinkState
+import com.codync.android.core.Pairing
 
 // What the roster header, Computers & settings and the chat header say about the computer's link
 // (iOS `ComputerStatus`, `ConnectionSummary`, `BotStore.connectionLabel`).
@@ -78,6 +79,10 @@ internal fun pairingLine(cloud: String?): String {
     return if (host == null) "Connects on Wi-Fi, over Tailscale, or from anywhere through Cloudflare, on its own. End-to-end encrypted."
     else "Connects on Wi-Fi, over Tailscale, or from anywhere through Private relay ($host), on its own. End-to-end encrypted."
 }
+
+/** The pairing page's line. Parsing stays here so a view only renders the sentence. */
+internal fun pairingLine(pasted: String, scheme: String): String =
+    pairingLine(runCatching { Pairing.parse(pasted, scheme).computer.cloud }.getOrNull())
 
 /** "1 connected", "Connecting…", "No access": the roster header's summary of its computers. */
 internal fun connectionSummary(state: AppState): String = when {

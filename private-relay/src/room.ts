@@ -64,6 +64,17 @@ export interface Refuse {
 
 type Msg = Record<string, unknown> & { t?: unknown }
 
+/** A JSON object. `null` and other non-objects are refused before any field is read. */
+function readMessage(raw: string): Msg | null {
+  try {
+    const value: unknown = JSON.parse(raw)
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return null
+    return value as Msg
+  } catch {
+    return null
+  }
+}
+
 function send(ws: WebSocket | undefined, text: string): void {
   if (!ws || ws.readyState !== ws.OPEN) return
   try {
@@ -123,7 +134,10 @@ export class Rooms {
       if (isBinary) return
       const raw = data.toString()
       if (raw === PING) return send(ws, PONG)
-      void this.onHost(room, host, raw)
+      void this.onHost(room, host, raw).catch(() => {
+        // A thrown frame must not reject outside this socket.
+        this.dropHost(room, host, 4002, 'protocolError')
+      })
     })
     ws.on('close', () => this.dropHost(room, host, 1000, ''))
     ws.on('error', () => this.dropHost(room, host, 1000, ''))
@@ -152,9 +166,14 @@ export class Rooms {
     const host = room.host
     if (host?.ready) send(host.ws, JSON.stringify({ t: 'open', link: device.link, dk, pair: device.pair }))
     ws.on('message', (data, isBinary) => {
-      device.heard = this.now()
-      if (isBinary) return this.closeDevice(room, device, 4002, 'protocolError')
-      this.onDevice(room, device, data.toString())
+      try {
+        device.heard = this.now()
+        if (isBinary) return this.closeDevice(room, device, 4002, 'protocolError')
+        this.onDevice(room, device, data.toString())
+      } catch {
+        // One bad frame stays on this socket. The room and every other computer keep running.
+        this.closeDevice(room, device, 4002, 'protocolError')
+      }
     })
     ws.on('close', () => this.dropDevice(room, device))
     ws.on('error', () => this.dropDevice(room, device))
@@ -201,12 +220,8 @@ export class Rooms {
 
   private async onHost(room: Room, host: HostConn, raw: string): Promise<void> {
     if (host.left || room.host !== host) return
-    let msg: Msg
-    try {
-      msg = JSON.parse(raw) as Msg
-    } catch {
-      return
-    }
+    const msg = readMessage(raw)
+    if (!msg) return
     if (msg.t === 'ping') return send(host.ws, PONG)
     if (msg.t === 'acl') return this.onAcl(room, host, msg)
     if (msg.t === 'ready') return this.onReady(room, host)
@@ -298,10 +313,8 @@ export class Rooms {
         return
       }
     }
-    let msg: Msg
-    try {
-      msg = JSON.parse(raw) as Msg
-    } catch {
+    const msg = readMessage(raw)
+    if (!msg) {
       this.closeDevice(room, device, 4002, 'protocolError')
       return
     }

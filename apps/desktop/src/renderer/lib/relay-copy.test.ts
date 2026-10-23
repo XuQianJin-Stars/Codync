@@ -8,6 +8,8 @@ test('official clouds stay Cloudflare and any other host is named', () => {
   assert.equal(relayHost(null), null)
   assert.equal(relayHost('https://relay.example.com'), 'relay.example.com')
   assert.equal(relayHost('http://127.0.0.1:8788'), '127.0.0.1:8788')
+  assert.equal(relayHost('https://[2001:db8::1]:8443'), '[2001:db8::1]:8443')
+  assert.equal(relayHost('https://[2001:db8::1]'), '[2001:db8::1]')
   assert.equal(connectedThrough('https://api.codync.dev'), 'Connected through Cloudflare')
   assert.equal(connectedThrough('https://relay.example.com'), 'Connected through Private relay (relay.example.com)')
   assert.equal(

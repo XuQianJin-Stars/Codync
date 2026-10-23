@@ -13,8 +13,8 @@ export function relayHost(cloud: string | null | undefined): string | null {
   }
   const hostname = url.hostname.toLowerCase()
   if (OFFICIAL.has(hostname) && url.port === '') return null
-  const name = hostname.includes(':') ? `[${hostname}]` : hostname
-  return url.port ? `${name}:${url.port}` : name
+  // `URL.hostname` already brackets an IPv6 address.
+  return url.port ? `${hostname}:${url.port}` : hostname
 }
 
 export function connectedThrough(cloud: string | null | undefined): string {

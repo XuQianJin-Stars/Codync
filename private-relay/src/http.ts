@@ -54,6 +54,45 @@ function isResponse(v: Body | Response): v is Response {
   return v instanceof Response
 }
 
+/** Reads at most `MAX_BODY` bytes, including a request with no `Content-Length`. */
+async function limitedBody(request: Request): Promise<Uint8Array | Response> {
+  const declared = request.headers.get('content-length')
+  if (declared !== null && (!/^\d+$/.test(declared) || Number(declared) > MAX_BODY)) {
+    await request.body?.cancel().catch(() => {
+      // The client may already be gone. The size refusal still stands.
+    })
+    return jsonError(400, 'badRequest', 'Body too large')
+  }
+  const reader = request.body?.getReader()
+  if (!reader) return new Uint8Array()
+  const chunks: Uint8Array[] = []
+  let total = 0
+  try {
+    for (;;) {
+      const { done, value } = await reader.read()
+      if (done) break
+      if (!value?.byteLength) continue
+      total += value.byteLength
+      if (total > MAX_BODY) {
+        await reader.cancel().catch(() => {
+          // The client may already be gone. The size refusal still stands.
+        })
+        return jsonError(400, 'badRequest', 'Body too large')
+      }
+      chunks.push(value)
+    }
+  } catch {
+    return jsonError(400, 'badRequest', 'Body is not JSON')
+  }
+  const raw = new Uint8Array(total)
+  let offset = 0
+  for (const chunk of chunks) {
+    raw.set(chunk, offset)
+    offset += chunk.byteLength
+  }
+  return raw
+}
+
 export interface RelayServer {
   server: Server
   url: string
@@ -76,7 +115,8 @@ export async function startRelay(options: {
   app.get('/health', (c) => c.json({ ok: true }))
 
   app.post('/v1/host/register', async (c) => {
-    const raw = new Uint8Array(await c.req.arrayBuffer())
+    const raw = await limitedBody(c.req.raw)
+    if (raw instanceof Response) return raw
     const body = objectBody(raw)
     if (isResponse(body)) return body
     const signed = await requireSig(c.req.header('host'), c.req.header('codync-sig'), 'POST', new URL(c.req.url), raw, now, store)
