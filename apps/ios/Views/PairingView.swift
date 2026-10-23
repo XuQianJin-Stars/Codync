@@ -265,7 +265,7 @@ private struct ScanPage: View {
 
                 // How it connects is never a choice here: every paired computer gets every route.
                 VStack(alignment: .leading, spacing: 8) {
-                    Label(L10n.tr("Connects on Wi-Fi, over Tailscale, or from anywhere through Cloudflare, on its own. End-to-end encrypted."),
+                    Label(L10n.tr(RelayCopy.pairing((try? Pairing.parse(pasted))?.computer.cloud)),
                           systemImage: "lock.fill")
                     if tailscaleOn {
                         Label(L10n.tr("Tailscale is on: Codync connects over it directly."), systemImage: "checkmark.circle.fill")

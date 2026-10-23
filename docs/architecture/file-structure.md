@@ -59,6 +59,7 @@ Codync/
 │   ├── src/
 │   ├── migrations/            # D1 migrations
 │   └── test/                  # workerd tests; e2e/ runs against a real test host
+├── private-relay/             # Single-process relay (the cloud WebSocket subset) for a person's own computers
 ├── relay/                     # Separate APNs push Worker; src/ and test/
 ├── discord/                   # Discord GitHub-role Worker (discord.codync.dev)
 ├── docs/                      # Architecture, features, design, guides, reference, plans, investigations, archive
@@ -125,7 +126,7 @@ Codync/
 - Each `BotStore` (Swift, and its TypeScript port in the desktop app) talks to one computer. `AccountStore` aggregates stores and routes by `BotReference`; bare bot IDs are not globally unique.
 - The host owns routing, reply quotes, permissions and group turn scheduling. Clients render these results; they do not reimplement host policy.
 - Android: `core` is plain JVM (no Android or Compose imports) and `design` holds no I/O; `app` uses both. Like the other clients it renders host state and sends intents, never product logic.
-- `cloud/` transports encrypted chat traffic and manages account metadata. `relay/` delivers APNs pushes. The two Workers have separate configuration and tests.
+- `cloud/` transports encrypted chat traffic and manages account metadata. `relay/` delivers APNs pushes. The two Workers have separate configuration and tests. `private-relay/` is a single-process subset of the cloud relay protocol for a person's own computers. It is not the APNs worker.
 
 ## Names
 
