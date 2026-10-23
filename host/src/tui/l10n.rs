@@ -7,16 +7,24 @@ use std::sync::{LazyLock, Mutex};
 use crate::LockExt;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum ChineseScript {
+    Hans,
+    Hant,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum AppLanguage {
     System,
     Zh,
+    ZhHant,
     En,
 }
 
 impl AppLanguage {
     fn parse(raw: &str) -> Self {
         match raw {
-            "zh" => Self::Zh,
+            "zh" | "zh-Hans" => Self::Zh,
+            "zh-Hant" => Self::ZhHant,
             "en" => Self::En,
             _ => Self::System,
         }
@@ -26,6 +34,7 @@ impl AppLanguage {
         match self {
             Self::System => "system",
             Self::Zh => "zh",
+            Self::ZhHant => "zh-Hant",
             Self::En => "en",
         }
     }
@@ -33,15 +42,21 @@ impl AppLanguage {
     fn next(self) -> Self {
         match self {
             Self::System => Self::Zh,
-            Self::Zh => Self::En,
+            Self::Zh => Self::ZhHant,
+            Self::ZhHant => Self::En,
             Self::En => Self::System,
         }
     }
 }
 
-static PHRASES: LazyLock<HashMap<String, String>> = LazyLock::new(|| {
+static HANS: LazyLock<HashMap<String, String>> = LazyLock::new(|| {
     serde_json::from_str(include_str!("../../../apps/ios/Kit/Sources/CodyncKit/Resources/zh-Hans.json"))
         .expect("zh-Hans.json is a string map")
+});
+
+static HANT: LazyLock<HashMap<String, String>> = LazyLock::new(|| {
+    serde_json::from_str(include_str!("../../../apps/ios/Kit/Sources/CodyncKit/Resources/zh-Hant.json"))
+        .expect("zh-Hant.json is a string map")
 });
 
 static PREFERENCE: LazyLock<Mutex<AppLanguage>> = LazyLock::new(|| Mutex::new(read_preference()));
@@ -57,18 +72,38 @@ fn read_preference() -> AppLanguage {
     }
 }
 
-fn system_is_chinese() -> bool {
-    std::env::var("LC_ALL")
-        .or_else(|_| std::env::var("LC_MESSAGES"))
-        .or_else(|_| std::env::var("LANG"))
-        .is_ok_and(|value| value.to_ascii_lowercase().starts_with("zh"))
+fn system_locale() -> Option<String> {
+    std::env::var("LC_ALL").or_else(|_| std::env::var("LC_MESSAGES")).or_else(|_| std::env::var("LANG")).ok()
 }
 
-fn uses_chinese() -> bool {
+/// `zh-Hant`, `zh_TW`, `zh_HK` and `zh_MO` read Traditional. Other Chinese locales read Simplified.
+fn system_script_of(value: &str) -> Option<ChineseScript> {
+    let id = value.to_ascii_lowercase().split('.').next().unwrap_or("").replace('_', "-");
+    if !id.starts_with("zh") {
+        return None;
+    }
+    if id.contains("hant") || id.contains("-tw") || id.contains("-hk") || id.contains("-mo") {
+        Some(ChineseScript::Hant)
+    } else {
+        Some(ChineseScript::Hans)
+    }
+}
+
+fn system_script() -> Option<ChineseScript> {
+    system_locale().as_deref().and_then(system_script_of)
+}
+
+/// The table for the saved choice. Traditional falls back to Simplified for a missing line.
+fn active_phrases() -> Option<&'static HashMap<String, String>> {
     match *PREFERENCE.locked() {
-        AppLanguage::Zh => true,
-        AppLanguage::En => false,
-        AppLanguage::System => system_is_chinese(),
+        AppLanguage::Zh => Some(&HANS),
+        AppLanguage::ZhHant => Some(&HANT),
+        AppLanguage::En => None,
+        AppLanguage::System => match system_script() {
+            Some(ChineseScript::Hant) => Some(&HANT),
+            Some(ChineseScript::Hans) => Some(&HANS),
+            None => None,
+        },
     }
 }
 
@@ -77,17 +112,20 @@ pub(in crate::tui) fn reset_line(raw: &str) -> String {
     let Some(time) = raw.strip_prefix("resets in ").or_else(|| raw.strip_prefix("resets ")) else {
         return tr(raw).into_owned();
     };
-    if !uses_chinese() {
-        return raw.to_owned();
-    }
-    match compact_time(time) {
-        Some(spoken) => format!("{spoken}{}", tr("after reset")),
-        None => format!("{} {time}", tr("resets")),
+    let Some(table) = active_phrases() else { return raw.to_owned() };
+    match compact_time_in(time, table) {
+        Some(spoken) => format!("{spoken}{}", translate_with("after reset", table)),
+        None => format!("{} {time}", translate_with("resets", table)),
     }
 }
 
-/// "3h 20m", "2d 6h", "45m". A clock time stays `None`.
+/// "3h 20m", "2d 6h", "45m", on the Simplified table. The live reset line uses the active table.
+#[cfg(test)]
 fn compact_time(time: &str) -> Option<String> {
+    compact_time_in(time, &HANS)
+}
+
+fn compact_time_in(time: &str, table: &HashMap<String, String>) -> Option<String> {
     let mut spoken = String::new();
     let mut matched = false;
     for token in time.split(' ') {
@@ -95,9 +133,9 @@ fn compact_time(time: &str) -> Option<String> {
         let unit = chars.next_back()?;
         let n: u32 = chars.as_str().parse().ok()?;
         let word = match unit {
-            'd' => translate("day unit", true),
-            'h' => translate("hour unit", true),
-            'm' => translate("minute unit", true),
+            'd' => translate_with("day unit", table),
+            'h' => translate_with("hour unit", table),
+            'm' => translate_with("minute unit", table),
             _ => return None,
         };
         matched = true;
@@ -111,14 +149,17 @@ fn compact_time(time: &str) -> Option<String> {
         return None;
     }
     if spoken.is_empty() {
-        spoken = format!("0{}", translate("minute unit", true));
+        spoken = format!("0{}", translate_with("minute unit", table));
     }
     Some(spoken)
 }
 
 /// An exact chrome phrase. Chat text that is not one of those phrases stays as written.
 pub(in crate::tui) fn tr(text: &str) -> Cow<'_, str> {
-    translate(text, uses_chinese())
+    match active_phrases() {
+        Some(table) => translate_with(text, table),
+        None => Cow::Borrowed(text),
+    }
 }
 
 /// One piece of a phrase key such as "Runs the official installer on {name}."
@@ -136,7 +177,7 @@ struct Template {
 /// Phrase keys that already contain `{token}` slots, longest fixed text first.
 static TEMPLATES: LazyLock<Vec<Template>> = LazyLock::new(|| {
     let mut out = Vec::new();
-    for key in PHRASES.keys() {
+    for key in HANS.keys() {
         let Some(pieces) = parse_template(key) else { continue };
         let literal: usize = pieces.iter().map(|piece| piece.literal.as_ref().map_or(0, String::len)).sum();
         if literal < 6 {
@@ -174,21 +215,25 @@ fn parse_template(template: &str) -> Option<Vec<Piece>> {
     pieces.iter().any(|piece| piece.token.is_some()).then_some(pieces)
 }
 
-/// A sentence the host or a view already filled in, matched back to its `{token}` phrase.
-fn templated(text: &str) -> Option<String> {
-    templated_at(text, 0)
+fn phrase_of<'a>(table: &'a HashMap<String, String>, key: &str) -> Option<&'a String> {
+    table.get(key).or_else(|| HANS.get(key))
 }
 
-fn templated_at(text: &str, depth: u8) -> Option<String> {
+/// A sentence the host or a view already filled in, matched back to its `{token}` phrase.
+fn templated(text: &str, table: &HashMap<String, String>) -> Option<String> {
+    templated_at(text, table, 0)
+}
+
+fn templated_at(text: &str, table: &HashMap<String, String>, depth: u8) -> Option<String> {
     for template in TEMPLATES.iter() {
         let Some(caps) = captures(text, &template.pieces) else { continue };
-        let Some(phrase) = PHRASES.get(&template.key) else { continue };
+        let Some(phrase) = phrase_of(table, &template.key) else { continue };
         let mut result = phrase.clone();
         for (token, value) in caps {
-            let shown = if let Some(hit) = PHRASES.get(&value) {
+            let shown = if let Some(hit) = phrase_of(table, &value) {
                 hit.clone()
             } else if depth == 0 {
-                templated_at(&value, 1).unwrap_or(value)
+                templated_at(&value, table, 1).unwrap_or(value)
             } else {
                 value
             };
@@ -228,33 +273,40 @@ fn captures(text: &str, pieces: &[Piece]) -> Option<Vec<(String, String)>> {
     (pos == text.len()).then_some(caps)
 }
 
+#[cfg(test)]
 fn translate(text: &str, chinese: bool) -> Cow<'_, str> {
-    if !chinese {
-        return Cow::Borrowed(text);
-    }
-    if let Some(hit) = PHRASES.get(text).cloned().or_else(|| templated(text)) {
+    if chinese { translate_with(text, &HANS) } else { Cow::Borrowed(text) }
+}
+
+fn translate_with<'a>(text: &'a str, table: &HashMap<String, String>) -> Cow<'a, str> {
+    if let Some(hit) = phrase_of(table, text).cloned().or_else(|| templated(text, table)) {
         return Cow::Owned(hit);
     }
     let trimmed = text.trim();
     if trimmed == text {
         return Cow::Borrowed(text);
     }
-    PHRASES.get(trimmed).cloned().or_else(|| templated(trimmed)).map_or(Cow::Borrowed(text), Cow::Owned)
+    phrase_of(table, trimmed).cloned().or_else(|| templated(trimmed, table)).map_or(Cow::Borrowed(text), Cow::Owned)
 }
 
 /// The choice shown beside the palette row.
 pub(in crate::tui) fn language_title() -> Cow<'static, str> {
-    // Copy the choice out first. `uses_chinese` locks `PREFERENCE` again, and the palette asks
-    // for this title on every row, so holding the guard across that call freezes the terminal.
+    // Copy the choice out first. A second lock of `PREFERENCE` while this one is held freezes
+    // the terminal, and the palette asks for this title on every row.
     let preference = *PREFERENCE.locked();
     match preference {
-        AppLanguage::Zh => Cow::Borrowed("中文"),
+        AppLanguage::Zh => Cow::Borrowed("简体中文"),
+        AppLanguage::ZhHant => Cow::Borrowed("繁體中文"),
         AppLanguage::En => Cow::Borrowed("English"),
-        AppLanguage::System => translate("Follow system", system_is_chinese()),
+        AppLanguage::System => match system_script() {
+            Some(ChineseScript::Hant) => translate_with("Follow system", &HANT),
+            Some(ChineseScript::Hans) => translate_with("Follow system", &HANS),
+            None => Cow::Borrowed("Follow system"),
+        },
     }
 }
 
-/// Follow system, then Chinese, then English, then back. The choice is kept for the next run.
+/// Follow system, then Simplified, then Traditional, then English. The choice is kept for the next run.
 pub(in crate::tui) fn cycle_language() -> Cow<'static, str> {
     let next = {
         let mut preference = PREFERENCE.locked();
@@ -310,15 +362,28 @@ mod tests {
     #[test]
     fn the_palette_label_reads_the_choice_without_locking_twice() {
         let title = super::language_title();
-        assert!(matches!(title.as_ref(), "跟随系统" | "Follow system" | "中文" | "English"));
+        assert!(matches!(
+            title.as_ref(),
+            "跟随系统" | "跟隨系統" | "Follow system" | "简体中文" | "繁體中文" | "English"
+        ));
     }
 
     #[test]
     fn a_missing_choice_follows_the_computer() {
         assert_eq!(AppLanguage::parse(""), AppLanguage::System);
         assert_eq!(AppLanguage::parse("zh"), AppLanguage::Zh);
+        assert_eq!(AppLanguage::parse("zh-Hans"), AppLanguage::Zh);
+        assert_eq!(AppLanguage::parse("zh-Hant"), AppLanguage::ZhHant);
         assert_eq!(AppLanguage::parse("en"), AppLanguage::En);
         assert_eq!(AppLanguage::System.next(), AppLanguage::Zh);
+        assert_eq!(AppLanguage::Zh.next(), AppLanguage::ZhHant);
+        assert_eq!(AppLanguage::ZhHant.next(), AppLanguage::En);
         assert_eq!(AppLanguage::En.next(), AppLanguage::System);
+        assert_eq!(super::system_script_of("zh_TW.UTF-8"), Some(super::ChineseScript::Hant));
+        assert_eq!(super::system_script_of("zh-HK"), Some(super::ChineseScript::Hant));
+        assert_eq!(super::system_script_of("zh_CN.UTF-8"), Some(super::ChineseScript::Hans));
+        assert_eq!(super::system_script_of("en_US.UTF-8"), None);
+        assert_eq!(super::translate_with("Settings", &super::HANT).as_ref(), "設定");
+        assert_eq!(super::translate_with("Files", &super::HANT).as_ref(), "檔案");
     }
 }

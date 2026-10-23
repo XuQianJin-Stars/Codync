@@ -3,19 +3,38 @@ package com.codync.android.design
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.staticCompositionLocalOf
 
-/** The language of this app's own interface. Chats and bots are not translated. */
+/** Which Chinese writing the interface uses. Traditional is its own table. */
+enum class ChineseScript { Hans, Hant }
+
+/** `zh-Hant`, `zh-TW`, `zh-HK` and `zh-MO` read Traditional. Other Chinese locales read Simplified. */
+fun systemScript(tag: String): ChineseScript? {
+    val id = tag.lowercase().replace('_', '-').substringBefore('.')
+    if (!id.startsWith("zh")) return null
+    return if (id.contains("hant") || id.contains("-tw") || id.contains("-hk") || id.contains("-mo")) ChineseScript.Hant else ChineseScript.Hans
+}
+
+/** The language of this app's own interface. Chats and bots are not translated. `Zh` stays stored as "zh". */
 enum class AppLanguage {
-    System, Zh, En;
+    System, Zh, ZhHant, En;
 
     fun usesChinese(systemIsChinese: Boolean): Boolean = when (this) {
-        Zh -> true
+        Zh, ZhHant -> true
         En -> false
         System -> systemIsChinese
     }
 
+    /** The table this choice reads. A missing Traditional line can fall back to Simplified. */
+    fun resolvedScript(systemTag: String): ChineseScript? = when (this) {
+        Zh -> ChineseScript.Hans
+        ZhHant -> ChineseScript.Hant
+        En -> null
+        System -> systemScript(systemTag)
+    }
+
     companion object {
         fun fromStored(raw: String?): AppLanguage = when (raw) {
-            "zh" -> Zh
+            "zh", "zh-Hans" -> Zh
+            "zh-Hant" -> ZhHant
             "en" -> En
             else -> System
         }
@@ -23,6 +42,7 @@ enum class AppLanguage {
         fun stored(language: AppLanguage): String = when (language) {
             System -> "system"
             Zh -> "zh"
+            ZhHant -> "zh-Hant"
             En -> "en"
         }
 
@@ -30,7 +50,8 @@ enum class AppLanguage {
         fun menuTitle(language: AppLanguage, preference: AppLanguage, systemIsChinese: Boolean, phrases: Map<String, String>): String =
             when (language) {
                 System -> translate("Follow system", preference, systemIsChinese, phrases)
-                Zh -> "中文"
+                Zh -> "简体中文"
+                ZhHant -> "繁體中文"
                 En -> "English"
             }
     }

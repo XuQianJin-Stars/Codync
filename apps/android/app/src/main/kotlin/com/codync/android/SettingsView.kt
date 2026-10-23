@@ -111,10 +111,14 @@ import kotlinx.serialization.json.put
             val setAppLanguage = LocalSetAppLanguage.current
             val systemChinese = LocalSystemChinese.current
             val phrases = LocalPhrases.current
-            CardSection("Language", footer = if (systemChinese) {
-                "System language is Chinese. \"Follow system\" matches the phone. You can switch this app to English."
-            } else {
-                "System language is English. \"Follow system\" matches the phone. You can switch this app to Chinese."
+            val script = systemScript(java.util.Locale.getDefault().toLanguageTag())
+            CardSection("Language", footer = when (script) {
+                ChineseScript.Hant ->
+                    "System language is Traditional Chinese. \"Follow system\" matches the phone. You can switch this app to Simplified Chinese or English."
+                ChineseScript.Hans ->
+                    "System language is Simplified Chinese. \"Follow system\" matches the phone. You can switch this app to Traditional Chinese or English."
+                null ->
+                    "System language is English. \"Follow system\" matches the phone. You can switch this app to Simplified or Traditional Chinese."
             }) {
                 row {
                     ValueRow("App language") {

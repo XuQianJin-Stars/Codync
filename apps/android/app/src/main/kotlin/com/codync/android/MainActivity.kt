@@ -26,6 +26,7 @@ import com.codync.android.design.LocalAppLanguage
 import com.codync.android.design.LocalPhrases
 import com.codync.android.design.LocalSetAppLanguage
 import com.codync.android.design.LocalSystemChinese
+import com.codync.android.design.systemScript
 import com.codync.android.design.OverlayRoot
 import coil3.ImageLoader
 import coil3.disk.DiskCache
@@ -61,8 +62,9 @@ class MainActivity : ComponentActivity() {
             val images = remember(state.contextId, state.generation) { AccountImages.open(applicationContext, state.contextId) }
             DisposableEffect(images) { onDispose { AccountImages.close(images) } }
             var appLanguage by remember { mutableStateOf(AppLanguageStore.get(applicationContext)) }
-            val phrases = remember { AppLanguageStore.phrases(applicationContext) }
-            val systemChinese = remember { java.util.Locale.getDefault().language == "zh" }
+            val systemTag = remember { java.util.Locale.getDefault().toLanguageTag() }
+            val phrases = remember(appLanguage) { AppLanguageStore.phrases(applicationContext, appLanguage, systemTag) }
+            val systemChinese = remember(systemTag) { systemScript(systemTag) != null }
             CompositionLocalProvider(
                 LocalNetworkImages provides images,
                 LocalAppLanguage provides appLanguage,

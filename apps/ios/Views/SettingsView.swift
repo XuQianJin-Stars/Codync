@@ -74,9 +74,7 @@ struct SettingsView: View {
 
             AppearanceSettings()
 
-            CardSection("Language", footer: AppLanguage.systemIsChinese()
-                ? "System language is Chinese. \"Follow system\" matches the iPhone. You can switch this app to English."
-                : "System language is English. \"Follow system\" matches the iPhone. You can switch this app to Chinese.") {
+            CardSection("Language", footer: languageFooter) {
                 ValueRow("App language") {
                     ChoicePicker(selection: appLanguage, options: AppLanguage.allCases.map {
                         ($0, AppLanguage.menuTitle($0, preference: appLanguage.wrappedValue, systemIsChinese: AppLanguage.systemIsChinese()))
@@ -185,6 +183,18 @@ struct SettingsView: View {
         ), message: accounts.lastError, cancel: "OK", inPlace: true) { [] }
     }
 
+
+    /// Follow system names the script the iPhone is using, so Traditional is a choice of its own.
+    private var languageFooter: String {
+        switch AppLanguage.systemScript() {
+        case .hant:
+            "System language is Traditional Chinese. \"Follow system\" matches the iPhone. You can switch this app to Simplified Chinese or English."
+        case .hans:
+            "System language is Simplified Chinese. \"Follow system\" matches the iPhone. You can switch this app to Traditional Chinese or English."
+        case nil:
+            "System language is English. \"Follow system\" matches the iPhone. You can switch this app to Simplified or Traditional Chinese."
+        }
+    }
 
     private var appLanguage: Binding<AppLanguage> {
         Binding(

@@ -3,7 +3,7 @@ import type { TrayImage, TraySummary } from '@shared/ipc'
 import { isGroup, isWorking, needsInput, folderName, type Bot, type UsageWindow } from '@shared/models'
 import { drawCharacter, moodOf } from '../components/Avatar'
 import { useModels } from '../lib/observable'
-import { resetLine, systemIsChinese, translate, usesChinese } from '../lib/l10n'
+import { resetLine, resolvedScript, translate } from '../lib/l10n'
 import { prefs, usePref } from '../lib/prefs'
 import { avatarColor, isDark, palette } from '../lib/theme'
 import type { AppModel } from '../store/app-model'
@@ -85,10 +85,10 @@ function barIcon(providerId: string, window: UsageWindow) {
 
 function usageLine(w: UsageWindow) {
   const preference = prefs.appLanguage.get()
-  const systemChinese = systemIsChinese()
-  const title = translate(windowTitle(w), preference, systemChinese)
+  const system = typeof navigator === 'undefined' ? 'en' : navigator.language
+  const title = translate(windowTitle(w), preference, system)
   const reset = resetDate(w)
-  const spoken = reset ? resetLine(`resets in ${untilText(reset)}`, preference, systemChinese) : ''
+  const spoken = reset ? resetLine(`resets in ${untilText(reset)}`, preference, system) : ''
   return `${title} · ${Math.round(w.percent)}%${spoken ? ` · ${spoken}` : ''}`
 }
 
@@ -138,7 +138,7 @@ export function useTraySummary(app: AppModel) {
         needsAttention: app.needsAttention,
         textSize,
         usageIconStyle: iconStyle,
-        chinese: usesChinese(language, systemIsChinese()),
+        script: resolvedScript(language, typeof navigator === 'undefined' ? 'en' : navigator.language),
       }
       window.codync.app.setTraySummary(summary)
     }, 150)

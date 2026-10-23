@@ -9,7 +9,7 @@ import { useDismiss } from '../../components/Overlay'
 import { HStack, IconSlot, VStack } from '../../components/Stack'
 import { Text } from '../../components/Text'
 import { useModel } from '../../lib/observable'
-import { languageTitle, systemIsChinese, type AppLanguage } from '../../lib/l10n'
+import { languageTitle, systemScript, type AppLanguage } from '../../lib/l10n'
 import { useTr } from '../../lib/use-language'
 import { DEFAULT_TEXT_SIZE, prefs, TEXT_SIZES, usePref } from '../../lib/prefs'
 import { useAccount } from '../../store/account'
@@ -121,7 +121,8 @@ function GeneralSettings() {
   useEffect(() => void window.codync.app.appearance().then(setAppearance), [])
   const [textSize, setTextSize] = usePref(prefs.textSize)
   const [language, setLanguage] = usePref(prefs.appLanguage)
-  const systemChinese = systemIsChinese()
+  const systemLanguage = typeof navigator === 'undefined' ? 'en' : navigator.language
+  const script = systemScript(systemLanguage)
   const [usageIconStyle, setUsageIconStyle] = usePref(prefs.usageIconStyle)
   const [compact, setCompact] = usePref(prefs.sidebarCompact)
   const [showInDock, setShowInDock] = useState(true)
@@ -184,17 +185,19 @@ function GeneralSettings() {
       <CardSection
         title="Language"
         footer={
-          systemChinese
-            ? 'System language is Chinese. "Follow system" matches this computer. You can switch this app to English.'
-            : 'System language is English. "Follow system" matches this computer. You can switch this app to Chinese.'
+          script === 'hant'
+            ? 'System language is Traditional Chinese. "Follow system" matches this computer. You can switch this app to Simplified Chinese or English.'
+            : script === 'hans'
+              ? 'System language is Simplified Chinese. "Follow system" matches this computer. You can switch this app to Traditional Chinese or English.'
+              : 'System language is English. "Follow system" matches this computer. You can switch this app to Simplified or Traditional Chinese.'
         }
       >
         <ValueRow label="App language">
           <ChoicePicker
             selection={language}
-            options={(['system', 'zh', 'en'] as const satisfies readonly AppLanguage[]).map((id) => ({
+            options={(['system', 'zh', 'zh-Hant', 'en'] as const satisfies readonly AppLanguage[]).map((id) => ({
               id,
-              label: languageTitle(id, language, systemChinese),
+              label: languageTitle(id, language, systemLanguage),
             }))}
             onChange={setLanguage}
           />

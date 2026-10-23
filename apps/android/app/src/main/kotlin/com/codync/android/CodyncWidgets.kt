@@ -264,14 +264,15 @@ private const val WARNING = 0xFFF0A030.toInt()
 
 @Composable private fun phrase(text: String): String {
     val context = LocalContext.current
-    val table = remember(context) { AppLanguageStore.phrases(context) }
-    return translate(text, AppLanguageStore.get(context), java.util.Locale.getDefault().language == "zh", table)
+    val language = AppLanguageStore.get(context)
+    val table = AppLanguageStore.phrases(context, language)
+    return translate(text, language, java.util.Locale.getDefault().language == "zh", table)
 }
 
 @Composable private fun resetSpoken(raw: String): String {
     val context = LocalContext.current
-    val table = remember(context) { AppLanguageStore.phrases(context) }
     val language = AppLanguageStore.get(context)
+    val table = AppLanguageStore.phrases(context, language)
     val systemChinese = java.util.Locale.getDefault().language == "zh"
     return spokenReset(raw, language.usesChinese(systemChinese)) { translate(it, language, systemChinese, table) }
 }

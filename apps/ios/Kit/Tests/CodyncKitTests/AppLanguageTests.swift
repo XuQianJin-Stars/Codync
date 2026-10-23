@@ -24,6 +24,7 @@ struct AppLanguageTests {
 
     @Test func chineseFollowsTheChoiceNotTheOtherLanguage() {
         #expect(AppLanguage.usesChinese(preference: .zh, systemIsChinese: false))
+        #expect(AppLanguage.usesChinese(preference: .zhHant, systemIsChinese: false))
         #expect(!AppLanguage.usesChinese(preference: .en, systemIsChinese: true))
         #expect(AppLanguage.usesChinese(preference: .system, systemIsChinese: true))
         #expect(!AppLanguage.usesChinese(preference: .system, systemIsChinese: false))
@@ -32,6 +33,12 @@ struct AppLanguageTests {
     @Test func systemChineseIsThePreferredLanguagePrefix() {
         #expect(AppLanguage.systemIsChinese(languages: ["zh-Hans-CN", "en"]))
         #expect(AppLanguage.systemIsChinese(languages: ["zh-Hant-TW"]))
+        #expect(AppLanguage.systemScript(languages: ["zh-Hant-TW"]) == .hant)
+        #expect(AppLanguage.systemScript(languages: ["zh-TW"]) == .hant)
+        #expect(AppLanguage.systemScript(languages: ["zh-HK"]) == .hant)
+        #expect(AppLanguage.systemScript(languages: ["zh-Hans-CN"]) == .hans)
+        #expect(AppLanguage.systemScript(languages: ["zh-CN"]) == .hans)
+        #expect(AppLanguage.systemScript(languages: ["en-US"]) == nil)
         #expect(!AppLanguage.systemIsChinese(languages: ["en-US", "zh-Hans"]))
         #expect(!AppLanguage.systemIsChinese(languages: []))
     }
@@ -39,9 +46,11 @@ struct AppLanguageTests {
     @Test func phrasesUseSimplifiedChineseOnlyWhenThatLanguageIsActive() {
         #expect(L10n.tr("Pair a computer", preference: .zh, systemIsChinese: false) == "配对一台电脑")
         #expect(L10n.tr("Pair a computer", preference: .en, systemIsChinese: true) == "Pair a computer")
-        #expect(L10n.tr("Pair a computer", preference: .system, systemIsChinese: true) == "配对一台电脑")
+        #expect(L10n.tr("Pair a computer", preference: .system, systemIsChinese: true, systemLanguages: ["zh-Hans-CN"]) == "配对一台电脑")
+        #expect(L10n.tr("Settings", preference: .system, systemIsChinese: true, systemLanguages: ["zh-Hant-TW"]) == "設定")
         #expect(L10n.tr("Not a phrase", preference: .zh, systemIsChinese: false) == "Not a phrase")
-        #expect(AppLanguage.menuTitle(.zh, preference: .en, systemIsChinese: true) == "中文")
+        #expect(AppLanguage.menuTitle(.zh, preference: .en, systemIsChinese: true) == "简体中文")
+        #expect(AppLanguage.menuTitle(.zhHant, preference: .en, systemIsChinese: true) == "繁體中文")
         #expect(AppLanguage.menuTitle(.system, preference: .zh, systemIsChinese: false) == "跟随系统")
     }
 
@@ -77,6 +86,8 @@ struct AppLanguageTests {
     @Test func chatMenuAndMemoryTranslateAsTheirOwnPhrases() {
         #expect(L10n.tr("Full conversation", preference: .zh, systemIsChinese: false) == "完整对话")
         #expect(L10n.tr("Settings", preference: .zh, systemIsChinese: false) == "设置")
+        #expect(L10n.tr("Settings", preference: .zhHant, systemIsChinese: false) == "設定")
+        #expect(L10n.tr("Files", preference: .zhHant, systemIsChinese: false) == "檔案")
         #expect(L10n.tr("New session", preference: .zh, systemIsChinese: false) == "新会话")
         #expect(L10n.tr("Delete bot", preference: .zh, systemIsChinese: false) == "删除 Bot")
         #expect(L10n.tr("Connected", preference: .zh, systemIsChinese: false) == "已连接")

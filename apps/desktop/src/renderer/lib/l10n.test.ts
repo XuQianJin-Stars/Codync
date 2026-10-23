@@ -1,14 +1,23 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { languageTitle, systemIsChinese, translate, usesChinese } from './l10n.ts'
+import { languageTitle, systemIsChinese, systemScript, translate, usesChinese } from './l10n.ts'
 
 test('chinese follows the choice, and a system preference follows the computer', () => {
   assert.equal(usesChinese('zh', false), true)
   assert.equal(usesChinese('en', true), false)
   assert.equal(usesChinese('system', true), true)
   assert.equal(usesChinese('system', false), false)
+  assert.equal(usesChinese('zh-Hant', false), true)
   assert.equal(systemIsChinese('zh-Hans-CN'), true)
+  assert.equal(systemIsChinese('zh-Hant-TW'), true)
   assert.equal(systemIsChinese('en-US'), false)
+  assert.equal(systemScript('zh-TW'), 'hant')
+  assert.equal(systemScript('zh-HK'), 'hant')
+  assert.equal(systemScript('zh-Hant-TW'), 'hant')
+  assert.equal(systemScript('zh_MO.UTF-8'), 'hant')
+  assert.equal(systemScript('zh-CN'), 'hans')
+  assert.equal(systemScript('zh-Hans-CN'), 'hans')
+  assert.equal(systemScript('en-US'), null)
 })
 
 test('known chrome becomes Chinese and everything else stays', () => {
@@ -17,7 +26,12 @@ test('known chrome becomes Chinese and everything else stays', () => {
   assert.equal(translate('Pair a computer', 'en', true), 'Pair a computer')
   assert.equal(translate('Not a phrase', 'system', true), 'Not a phrase')
   assert.equal(languageTitle('system', 'zh', false), '跟随系统')
-  assert.equal(languageTitle('zh', 'en', true), '中文')
+  assert.equal(languageTitle('zh', 'en', true), '简体中文')
+  assert.equal(languageTitle('zh-Hant', 'en', true), '繁體中文')
+  assert.equal(translate('Settings', 'zh-Hant', 'en'), '設定')
+  assert.equal(translate('Files', 'zh-Hant', 'en'), '檔案')
+  assert.equal(translate('Settings', 'system', 'zh-TW'), '設定')
+  assert.equal(translate('Settings', 'system', 'zh-CN'), '设置')
   assert.equal(languageTitle('en', 'zh', false), 'English')
   assert.equal(translate('Personal', 'zh', false), '个人')
   assert.equal(translate('This Mac', 'zh', false), '这台 Mac')

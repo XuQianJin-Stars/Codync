@@ -12,6 +12,7 @@ class AppLanguageTest {
 
     @Test fun chineseFollowsTheChoiceNotTheOtherLanguage() {
         assertTrue(AppLanguage.Zh.usesChinese(systemIsChinese = false))
+        assertTrue(AppLanguage.ZhHant.usesChinese(systemIsChinese = false))
         assertFalse(AppLanguage.En.usesChinese(systemIsChinese = true))
         assertTrue(AppLanguage.System.usesChinese(systemIsChinese = true))
         assertFalse(AppLanguage.System.usesChinese(systemIsChinese = false))
@@ -21,7 +22,10 @@ class AppLanguageTest {
         assertEquals("配对一台电脑", translate("Pair a computer", AppLanguage.Zh, systemIsChinese = false, phrases))
         assertEquals("Pair a computer", translate("Pair a computer", AppLanguage.En, systemIsChinese = true, phrases))
         assertEquals("跟随系统", AppLanguage.menuTitle(AppLanguage.System, AppLanguage.Zh, systemIsChinese = false, phrases))
-        assertEquals("中文", AppLanguage.menuTitle(AppLanguage.Zh, AppLanguage.En, systemIsChinese = true, phrases))
+        assertEquals("简体中文", AppLanguage.menuTitle(AppLanguage.Zh, AppLanguage.En, systemIsChinese = true, phrases))
+        assertEquals("繁體中文", AppLanguage.menuTitle(AppLanguage.ZhHant, AppLanguage.En, systemIsChinese = true, phrases))
+        assertEquals(AppLanguage.Zh, AppLanguage.fromStored("zh"))
+        assertEquals(AppLanguage.ZhHant, AppLanguage.fromStored("zh-Hant"))
         assertEquals("Not a phrase", translate("Not a phrase", AppLanguage.Zh, systemIsChinese = false, phrases))
     }
 

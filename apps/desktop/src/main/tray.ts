@@ -8,7 +8,7 @@ import { setShowInDock, showInDock } from './dock'
 import { identity } from './environment'
 import { islandSupported, type Island } from './island'
 import { islandLabel } from '../shared/island'
-import { translate } from '../renderer/lib/l10n'
+import { systemScript, translate } from '../renderer/lib/l10n'
 import { launchAtLogin, setLaunchAtLogin } from './login-item'
 
 interface Deps {
@@ -58,8 +58,9 @@ export class Tray {
 
   /** Menu-bar labels are a system menu, so they translate here. Slots are filled after lookup. */
   private tr(text: string) {
-    const chinese = this.summary?.chinese ?? app.getLocale().toLowerCase().startsWith('zh')
-    return translate(text, chinese ? 'zh' : 'en', false)
+    const script = this.summary?.script ?? systemScript(app.getLocale())
+    const preference = script === 'hant' ? 'zh-Hant' : script === 'hans' ? 'zh' : 'en'
+    return translate(text, preference, 'en')
   }
 
   /** The renderer draws menu images at 1× and 2× (`tray-summary.ts`): each screen gets its own pixels. */

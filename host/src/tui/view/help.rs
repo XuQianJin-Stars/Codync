@@ -70,7 +70,7 @@ const HELP: [(&str, &str, &str); 64] = [
     ("VIEW", "P", "pair a phone"),
     ("VIEW", "^k share", "share usage analytics on / off"),
     ("VIEW", "^k about", "what usage analytics include"),
-    ("VIEW", "language", "app language: follow system, Chinese, or English"),
+    ("VIEW", "language", "app language: follow system, Simplified, Traditional, or English"),
     ("VIEW", "esc", "close / go back"),
     ("VIEW", "q", "quit; bots keep going"),
     ("MOUSE", "click", "open, press a button"),

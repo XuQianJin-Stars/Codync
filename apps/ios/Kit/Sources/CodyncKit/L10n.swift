@@ -1,10 +1,18 @@
 import Foundation
 import os
 
+/// Which Chinese writing the interface uses. Traditional is its own table, not a conversion of Simplified.
+public enum ChineseScript: Sendable {
+    case hans
+    case hant
+}
+
 /// The language of this app's own interface. Stored on the device; chats and bots are not translated.
+/// `zh` stays the stored name for Simplified, so a choice saved before Traditional existed still reads it.
 public enum AppLanguage: String, CaseIterable, Sendable, Identifiable, Hashable {
     case system
     case zh
+    case zhHant = "zh-Hant"
     case en
 
     public var id: String { rawValue }
@@ -27,12 +35,20 @@ public enum AppLanguage: String, CaseIterable, Sendable, Identifiable, Hashable 
     }
 
     public static func systemIsChinese(languages: [String] = Locale.preferredLanguages) -> Bool {
-        languages.first?.hasPrefix("zh") == true
+        systemScript(languages: languages) != nil
+    }
+
+    /// `zh-Hant`, `zh-TW`, `zh-HK` and `zh-MO` read Traditional. Other Chinese locales read Simplified.
+    public static func systemScript(languages: [String] = Locale.preferredLanguages) -> ChineseScript? {
+        guard let id = languages.first?.lowercased().replacingOccurrences(of: "_", with: "-") else { return nil }
+        guard id.hasPrefix("zh") else { return nil }
+        if id.contains("hant") || id.contains("-tw") || id.contains("-hk") || id.contains("-mo") { return .hant }
+        return .hans
     }
 
     public static func usesChinese(preference: AppLanguage, systemIsChinese: Bool) -> Bool {
         switch preference {
-        case .zh: true
+        case .zh, .zhHant: true
         case .en: false
         case .system: systemIsChinese
         }
@@ -40,47 +56,76 @@ public enum AppLanguage: String, CaseIterable, Sendable, Identifiable, Hashable 
 
     /// The locale SwiftUI should use so dates and string lookups follow the choice.
     public static func locale(preference: AppLanguage, systemIsChinese: Bool) -> Locale {
-        usesChinese(preference: preference, systemIsChinese: systemIsChinese)
-            ? Locale(identifier: "zh-Hans")
-            : Locale(identifier: "en")
+        switch preference {
+        case .zh: return Locale(identifier: "zh-Hans")
+        case .zhHant: return Locale(identifier: "zh-Hant")
+        case .en: return Locale(identifier: "en")
+        case .system:
+            guard systemIsChinese else { return Locale(identifier: "en") }
+            return systemScript() == .hant ? Locale(identifier: "zh-Hant") : Locale(identifier: "zh-Hans")
+        }
     }
 
     /// What the language menu shows for this choice. Names of languages stay in that language.
     public static func menuTitle(_ language: AppLanguage, preference: AppLanguage, systemIsChinese: Bool) -> String {
         switch language {
         case .system: L10n.tr("Follow system", preference: preference, systemIsChinese: systemIsChinese)
-        case .zh: "中文"
+        case .zh: "简体中文"
+        case .zhHant: "繁體中文"
         case .en: "English"
         }
     }
 }
 
-/// English source strings, with Simplified Chinese when the app language asks for it.
+/// English source strings, with a Simplified or Traditional table when the app language asks for it.
 public enum L10n {
     private static let log = Logger(subsystem: "com.pokai.Codync", category: "L10n")
 
-    private static let chinese: [String: String] = {
-        guard let url = Bundle.module.url(forResource: "zh-Hans", withExtension: "json") else {
-            log.error("Chinese phrases are missing from the app bundle")
+    private static let hans = load("zh-Hans")
+    private static let hant = load("zh-Hant")
+
+    /// A missing or malformed table is logged and left empty, so the interface stays in English.
+    private static func load(_ name: String) -> [String: String] {
+        guard let url = Bundle.module.url(forResource: name, withExtension: "json") else {
+            log.error("\(name, privacy: .public) phrases are missing from the app bundle")
             return [:]
         }
         do {
             return try JSONDecoder().decode([String: String].self, from: Data(contentsOf: url))
         } catch {
-            log.error("Chinese phrases failed to load: \(error, privacy: .public)")
+            log.error("\(name, privacy: .public) phrases failed to load: \(error, privacy: .public)")
             return [:]
         }
-    }()
+    }
 
     public static func tr(
         _ key: String,
         preference: AppLanguage = AppLanguage.preference(),
-        systemIsChinese: Bool = AppLanguage.systemIsChinese()
+        systemIsChinese: Bool = AppLanguage.systemIsChinese(),
+        systemLanguages: [String] = Locale.preferredLanguages
     ) -> String {
-        guard AppLanguage.usesChinese(preference: preference, systemIsChinese: systemIsChinese) else { return key }
-        if let hit = phrase(key) { return hit }
+        guard let tables = tables(preference: preference, systemIsChinese: systemIsChinese, systemLanguages: systemLanguages) else {
+            return key
+        }
+        if let hit = phrase(key, primary: tables.primary, fallback: tables.fallback) { return hit }
         let trimmed = key.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed == key ? key : (phrase(trimmed) ?? key)
+        return trimmed == key ? key : (phrase(trimmed, primary: tables.primary, fallback: tables.fallback) ?? key)
+    }
+
+    /// Simplified, Traditional, or neither. A missing Traditional line falls back to Simplified.
+    private static func tables(
+        preference: AppLanguage,
+        systemIsChinese: Bool,
+        systemLanguages: [String]
+    ) -> (primary: [String: String], fallback: [String: String])? {
+        switch preference {
+        case .zh: return (hans, [:])
+        case .zhHant: return (hant, hans)
+        case .en: return nil
+        case .system:
+            guard systemIsChinese else { return nil }
+            return AppLanguage.systemScript(languages: systemLanguages) == .hant ? (hant, hans) : (hans, [:])
+        }
     }
 
     /// One piece of a phrase key such as "Runs the official installer on {name}."
@@ -91,7 +136,7 @@ public enum L10n {
 
     /// Phrase keys that already contain `{token}` slots, longest fixed text first.
     private static let templates: [(key: String, pieces: [Piece])] = {
-        chinese.compactMap { key, _ -> (Int, String, [Piece])? in
+        hans.compactMap { key, _ -> (Int, String, [Piece])? in
             guard let pieces = parseTemplate(key) else { return nil }
             let literal = pieces.reduce(0) { $0 + ($1.literal?.count ?? 0) }
             guard literal >= 6 else { return nil }
@@ -121,16 +166,24 @@ public enum L10n {
     }
 
     /// A sentence the host or a view already filled in, matched back to its `{token}` phrase.
-    private static func phrase(_ key: String) -> String? {
-        if let hit = chinese[key] { return hit }
+    private static func phrase(_ key: String, primary: [String: String], fallback: [String: String]) -> String? {
+        if let hit = primary[key] ?? fallback[key] { return hit }
         for template in templates {
-            guard let phrase = chinese[template.key], let filled = fill(key, pieces: template.pieces, phrase: phrase, depth: 0) else { continue }
+            guard let phrase = primary[template.key] ?? fallback[template.key],
+                  let filled = fill(key, pieces: template.pieces, phrase: phrase, primary: primary, fallback: fallback, depth: 0) else { continue }
             return filled
         }
         return nil
     }
 
-    private static func fill(_ text: String, pieces: [Piece], phrase: String, depth: Int) -> String? {
+    private static func fill(
+        _ text: String,
+        pieces: [Piece],
+        phrase: String,
+        primary: [String: String],
+        fallback: [String: String],
+        depth: Int
+    ) -> String? {
         var pos = text.startIndex
         var caps: [String: String] = [:]
         for (index, piece) in pieces.enumerated() {
@@ -154,16 +207,17 @@ public enum L10n {
         guard pos == text.endIndex else { return nil }
         var result = phrase
         for (token, value) in caps {
-            let inner = chinese[value] ?? (depth == 0 ? nested(value) : nil) ?? value
+            let inner = primary[value] ?? fallback[value] ?? (depth == 0 ? nested(value, primary: primary, fallback: fallback) : nil) ?? value
             result = result.replacingOccurrences(of: token, with: inner)
         }
         return result
     }
 
     /// One more template pass, for a setup hint inside an error. It does not look inside its own slots.
-    private static func nested(_ text: String) -> String? {
+    private static func nested(_ text: String, primary: [String: String], fallback: [String: String]) -> String? {
         for template in templates {
-            guard let phrase = chinese[template.key], let filled = fill(text, pieces: template.pieces, phrase: phrase, depth: 1) else { continue }
+            guard let phrase = primary[template.key] ?? fallback[template.key],
+                  let filled = fill(text, pieces: template.pieces, phrase: phrase, primary: primary, fallback: fallback, depth: 1) else { continue }
             return filled
         }
         return nil

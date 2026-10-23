@@ -1,18 +1,47 @@
-import phrases from '../../../../ios/Kit/Sources/CodyncKit/Resources/zh-Hans.json' with { type: 'json' }
+import hansPhrases from '../../../../ios/Kit/Sources/CodyncKit/Resources/zh-Hans.json' with { type: 'json' }
+import hantPhrases from '../../../../ios/Kit/Sources/CodyncKit/Resources/zh-Hant.json' with { type: 'json' }
 
-/** This app's interface language. Chats and bot names are not translated. */
-export type AppLanguage = 'system' | 'zh' | 'en'
+/** This app's interface language. `zh` is Simplified, kept so a saved choice still means that. */
+export type AppLanguage = 'system' | 'zh' | 'zh-Hant' | 'en'
 
-const table = phrases as Record<string, string>
+/** Traditional is its own table. A boolean `true` from older callers means Simplified. */
+export type ChineseScript = 'hans' | 'hant'
 
-export function systemIsChinese(language = typeof navigator === 'undefined' ? '' : navigator.language): boolean {
-  return language.toLowerCase().startsWith('zh')
+const hans = hansPhrases as Record<string, string>
+const hant = hantPhrases as Record<string, string>
+
+function languageTag(system: string | boolean, fallback = typeof navigator === 'undefined' ? '' : navigator.language): string {
+  if (system === true) return 'zh-Hans'
+  if (system === false) return 'en'
+  return system || fallback
 }
 
-export function usesChinese(preference: AppLanguage, systemChinese: boolean): boolean {
-  if (preference === 'zh') return true
-  if (preference === 'en') return false
-  return systemChinese
+/** `zh-Hant`, `zh-TW`, `zh-HK` and `zh-MO` read Traditional. Other Chinese locales read Simplified. */
+export function systemScript(language = typeof navigator === 'undefined' ? '' : navigator.language): ChineseScript | null {
+  const id = language.toLowerCase().replaceAll('_', '-').split('.')[0] ?? ''
+  if (!id.startsWith('zh')) return null
+  if (id.includes('hant') || id.includes('-tw') || id.includes('-hk') || id.includes('-mo')) return 'hant'
+  return 'hans'
+}
+
+export function systemIsChinese(language = typeof navigator === 'undefined' ? '' : navigator.language): boolean {
+  return systemScript(language) != null
+}
+
+/** The table this choice reads. A boolean `true` from older callers means Simplified. */
+export function resolvedScript(preference: AppLanguage, system: string | boolean): ChineseScript | null {
+  if (preference === 'zh') return 'hans'
+  if (preference === 'zh-Hant') return 'hant'
+  if (preference === 'en') return null
+  return systemScript(languageTag(system))
+}
+
+export function usesChinese(preference: AppLanguage, system: string | boolean): boolean {
+  return resolvedScript(preference, system) != null
+}
+
+function tables(script: ChineseScript): { primary: Record<string, string>; fallback: Record<string, string> } {
+  return script === 'hant' ? { primary: hant, fallback: hans } : { primary: hans, fallback: hans }
 }
 
 /** One piece of a phrase key such as "Runs the official installer on {name}." */
@@ -23,7 +52,7 @@ interface Piece { literal?: string; token?: string }
  * A filled sentence ("Runs the official installer on this Mac.") matches the key,
  * and a slot that is itself a known phrase (a setup hint) is translated too.
  */
-const templates: Array<{ key: string; pieces: Piece[]; literal: number }> = Object.keys(table).flatMap((key) => {
+const templates: Array<{ key: string; pieces: Piece[]; literal: number }> = Object.keys(hans).flatMap((key) => {
   const pieces = parseTemplate(key)
   if (!pieces) return []
   const literal = pieces.reduce((n, piece) => n + (piece.literal?.length ?? 0), 0)
@@ -48,7 +77,11 @@ function parseTemplate(template: string): Piece[] | undefined {
   return pieces.some((piece) => piece.token) ? pieces : undefined
 }
 
-function fill(text: string, pieces: Piece[], phrase: string, depth: number): string | undefined {
+function hit(key: string, primary: Record<string, string>, fallback: Record<string, string>): string | undefined {
+  return primary[key] ?? fallback[key]
+}
+
+function fill(text: string, pieces: Piece[], phrase: string, primary: Record<string, string>, fallback: Record<string, string>, depth: number): string | undefined {
   let pos = 0
   const caps = new Map<string, string>()
   for (let i = 0; i < pieces.length; i++) {
@@ -68,42 +101,44 @@ function fill(text: string, pieces: Piece[], phrase: string, depth: number): str
   if (pos !== text.length) return undefined
   let result = phrase
   for (const [token, value] of caps) {
-    const inner = table[value] ?? (depth === 0 ? templated(value, 1) : undefined) ?? value
+    const inner = hit(value, primary, fallback) ?? (depth === 0 ? templated(value, primary, fallback, 1) : undefined) ?? value
     result = result.replaceAll(token, inner)
   }
   return result
 }
 
 /** A sentence the host or a view already filled in, matched back to its `{token}` phrase. */
-function templated(text: string, depth = 0): string | undefined {
+function templated(text: string, primary: Record<string, string>, fallback: Record<string, string>, depth = 0): string | undefined {
   for (const template of templates) {
-    const phrase = table[template.key]
-    const filled = phrase ? fill(text, template.pieces, phrase, depth) : undefined
+    const phrase = hit(template.key, primary, fallback)
+    const filled = phrase ? fill(text, template.pieces, phrase, primary, fallback, depth) : undefined
     if (filled) return filled
   }
   return undefined
 }
 
-function phrase(text: string): string | undefined {
-  return table[text] ?? templated(text)
+function phrase(text: string, primary: Record<string, string>, fallback: Record<string, string>): string | undefined {
+  return hit(text, primary, fallback) ?? templated(text, primary, fallback)
 }
 
 /** Exact chrome phrases, including a label whose JSX kept the surrounding spaces. */
-export function translate(text: string, preference: AppLanguage, systemChinese: boolean): string {
-  if (!usesChinese(preference, systemChinese)) return text
-  const direct = phrase(text)
+export function translate(text: string, preference: AppLanguage, system: string | boolean = 'en'): string {
+  const script = resolvedScript(preference, system)
+  if (!script) return text
+  const { primary, fallback } = tables(script)
+  const direct = phrase(text, primary, fallback)
   if (direct) return direct
   const trimmed = text.trim()
-  return trimmed === text ? text : (phrase(trimmed) ?? text)
+  return trimmed === text ? text : (phrase(trimmed, primary, fallback) ?? text)
 }
 
 /** "resets 3h 20m" / "resets in 2d 6h". Compact times become "3小时20分后重置". */
-export function resetLine(raw: string, preference: AppLanguage, systemChinese: boolean): string {
-  if (!usesChinese(preference, systemChinese)) return raw
+export function resetLine(raw: string, preference: AppLanguage, system: string | boolean = 'en'): string {
+  if (!usesChinese(preference, system)) return raw
   const time = raw.startsWith('resets in ') ? raw.slice('resets in '.length) : raw.startsWith('resets ') ? raw.slice('resets '.length) : null
-  if (time == null) return translate(raw, preference, systemChinese)
-  const spoken = compactTime(time, (key) => translate(key, preference, systemChinese))
-  return spoken ? spoken + translate('after reset', preference, systemChinese) : `${translate('resets', preference, systemChinese)} ${time}`
+  if (time == null) return translate(raw, preference, system)
+  const spoken = compactTime(time, (key) => translate(key, preference, system))
+  return spoken ? spoken + translate('after reset', preference, system) : `${translate('resets', preference, system)} ${time}`
 }
 
 function compactTime(time: string, tr: (key: string) => string): string | null {
@@ -123,8 +158,9 @@ function compactTime(time: string, tr: (key: string) => string): string | null {
   return spoken || `0${tr('minute unit')}`
 }
 
-export function languageTitle(language: AppLanguage, preference: AppLanguage, systemChinese: boolean): string {
-  if (language === 'zh') return '中文'
+export function languageTitle(language: AppLanguage, preference: AppLanguage, system: string | boolean): string {
+  if (language === 'zh') return '简体中文'
+  if (language === 'zh-Hant') return '繁體中文'
   if (language === 'en') return 'English'
-  return translate('Follow system', preference, systemChinese)
+  return translate('Follow system', preference, system)
 }
