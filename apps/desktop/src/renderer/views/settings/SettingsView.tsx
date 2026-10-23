@@ -99,7 +99,7 @@ function PageContent({ page }: { page: SettingsPage }) {
         </StoreContext.Provider>
       ) : (
         <CardForm>
-          <Text tone="secondary">Voice keys are kept by {thisMac}'s host, which isn't running.</Text>
+          <Text tone="secondary">Voice keys are kept by {thisMac}tr(`s host, which isn`)t running.</Text>
         </CardForm>
       )
     case 'usage':
@@ -140,10 +140,10 @@ function GeneralSettings() {
           <Icon name="person.crop.circle" size={26} color="var(--secondary)" />
           <VStack grow className="settings-stack">
             <Text truncate>
-              {account.isSignedIn ? (account.user?.email ?? 'Signed in') : 'Not signed in'}
+              {account.isSignedIn ? (account.user?.email ?? tr(`Signed in`)) : tr(`Not signed in`)}
             </Text>
             <Text size="caption" tone="secondary">
-              {account.isSignedIn ? 'Reach your computers from anywhere' : 'Sign in to reach your computers from anywhere'}
+              {account.isSignedIn ? tr(`Reach your computers from anywhere`) : tr(`Sign in to reach your computers from anywhere`)}
             </Text>
           </VStack>
           {account.isSignedIn ? (
@@ -247,10 +247,11 @@ function PrivacySettings() {
 
 /** Every computer's usage limits, grouped by computer when there's more than one. */
 function UsageLimitsList() {
+  const tr = useTr()
   const app = useApp()
   const stores = app.computers.flatMap((c) => app.store(c.id) ?? [])
   const withUsage = stores.filter((s) => s.usage.providers.length > 0)
-  if (withUsage.length === 0) return <Text tone="secondary">No usage information yet.</Text>
+  if (withUsage.length === 0) return <Text tone="secondary">{tr(`No usage information yet.`)}</Text>
   return (
     <>
       {withUsage.flatMap((store) => [

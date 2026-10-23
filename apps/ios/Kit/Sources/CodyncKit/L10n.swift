@@ -1,4 +1,5 @@
 import Foundation
+import os
 
 /// The language of this app's own interface. Stored on the device; chats and bots are not translated.
 public enum AppLanguage: String, CaseIterable, Sendable, Identifiable, Hashable {
@@ -9,6 +10,21 @@ public enum AppLanguage: String, CaseIterable, Sendable, Identifiable, Hashable 
     public var id: String { rawValue }
 
     public static let storageKey = "appLanguage"
+
+    /// The App Group, so the widget extension reads the same choice the app writes.
+    /// A choice saved before this was shared is copied across the first time the app looks.
+    public static var defaults: UserDefaults {
+        let shared = UserDefaults(suiteName: SharedStore.appGroup) ?? .standard
+        if shared.string(forKey: storageKey) == nil,
+           let existing = UserDefaults.standard.string(forKey: storageKey) {
+            shared.set(existing, forKey: storageKey)
+        }
+        return shared
+    }
+
+    public static func preference(in store: UserDefaults = defaults) -> AppLanguage {
+        AppLanguage(rawValue: store.string(forKey: storageKey) ?? "") ?? .system
+    }
 
     public static func systemIsChinese(languages: [String] = Locale.preferredLanguages) -> Bool {
         languages.first?.hasPrefix("zh") == true
@@ -41,16 +57,24 @@ public enum AppLanguage: String, CaseIterable, Sendable, Identifiable, Hashable 
 
 /// English source strings, with Simplified Chinese when the app language asks for it.
 public enum L10n {
+    private static let log = Logger(subsystem: "com.pokai.Codync", category: "L10n")
+
     private static let chinese: [String: String] = {
-        guard let url = Bundle.module.url(forResource: "zh-Hans", withExtension: "json"),
-              let data = try? Data(contentsOf: url),
-              let table = try? JSONDecoder().decode([String: String].self, from: data) else { return [:] }
-        return table
+        guard let url = Bundle.module.url(forResource: "zh-Hans", withExtension: "json") else {
+            log.error("Chinese phrases are missing from the app bundle")
+            return [:]
+        }
+        do {
+            return try JSONDecoder().decode([String: String].self, from: Data(contentsOf: url))
+        } catch {
+            log.error("Chinese phrases failed to load: \(error, privacy: .public)")
+            return [:]
+        }
     }()
 
     public static func tr(
         _ key: String,
-        preference: AppLanguage = AppLanguage(rawValue: UserDefaults.standard.string(forKey: AppLanguage.storageKey) ?? "") ?? .system,
+        preference: AppLanguage = AppLanguage.preference(),
         systemIsChinese: Bool = AppLanguage.systemIsChinese()
     ) -> String {
         guard AppLanguage.usesChinese(preference: preference, systemIsChinese: systemIsChinese) else { return key }
@@ -148,7 +172,7 @@ public enum L10n {
     /// "resets 3h 20m" / "resets in 2d 6h". Compact times become "3小时20分后重置".
     public static func resetLine(_ raw: String) -> String {
         guard let time = resetRemainder(raw) else { return tr(raw) }
-        let preference = AppLanguage(rawValue: UserDefaults.standard.string(forKey: AppLanguage.storageKey) ?? "") ?? .system
+        let preference = AppLanguage.preference()
         guard AppLanguage.usesChinese(preference: preference, systemIsChinese: AppLanguage.systemIsChinese()) else { return raw }
         if let spoken = compactTime(time) { return spoken + tr("after reset") }
         return "\(tr("resets")) \(time)"

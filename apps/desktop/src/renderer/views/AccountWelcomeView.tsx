@@ -35,7 +35,7 @@ export function AccountWelcomeView({ onContinue }: { onContinue: () => void }) {
     return (
       <VStack align="center" justify="center" gap={14} className="welcome-restoring">
         <Spinner size={24} />
-        <Text as="div" size="callout" tone="secondary">Checking for a saved account…</Text>
+        <Text as="div" size="callout" tone="secondary">{tr(`Checking for a saved account…`)}</Text>
         <button className="welcome-skip" onClick={onContinue}>
           {onThis}
         </button>
@@ -60,7 +60,7 @@ export function AccountWelcomeView({ onContinue }: { onContinue: () => void }) {
         </div>
         <VStack gap={10} style={rise(beat >= 3)}>
           <div className="welcome-title">{tr('Your coding agents,\nas teammates.')}</div>
-          <Text as="div" size="body" tone="secondary">Give each one a name and a project. They work on your computer while you're away.</Text>
+          <Text as="div" size="body" tone="secondary">{tr(`Give each one a name and a project. They work on your computer while you're away.`)}</Text>
         </VStack>
         <Spacer min={32} />
         <VStack gap={10} style={rise(beat >= 4)}>
@@ -140,6 +140,7 @@ function WelcomeCrew({ shown }: { shown: boolean }) {
 
 /** A short animated user and bot exchange, matching the iPhone onboarding preview. */
 function WelcomeChatGlimpse({ shown }: { shown: boolean }) {
+  const tr = useTr()
   const reduce = useReduceMotion()
   const [replied, setReplied] = useState(false)
   useEffect(() => {
@@ -151,16 +152,16 @@ function WelcomeChatGlimpse({ shown }: { shown: boolean }) {
   return (
     <VStack gap={10}>
       <HStack align="stretch" justify="flex-end" style={rise}>
-        <Text size="subheadline" tone="text" className="welcome-bubble user">Fix the flaky login test</Text>
+        <Text size="subheadline" tone="text" className="welcome-bubble user">{tr(`Fix the flaky login test`)}</Text>
       </HStack>
       <HStack align="flex-end" gap={8} style={rise}>
         <CharacterAvatar shape="blob" color="blue" size={28} mood={replied ? 'idle' : 'working'} />
         {replied ? (
           <Text size="subheadline" tone="text" className="welcome-bubble agent">
-            Done. It raced the session refresh; tests pass on fix/login.
+            {tr(`Done. It raced the session refresh; tests pass on fix/login.`)}
           </Text>
         ) : (
-          <Text size="subheadline" tone="tertiary">Working…</Text>
+          <Text size="subheadline" tone="tertiary">{tr(`Working…`)}</Text>
         )}
       </HStack>
     </VStack>

@@ -65,7 +65,7 @@ export function NodeNotice({ onAdd }: { onAdd: () => void }) {
       <Icon name="shippingbox" size={15} color="var(--secondary)" />
       <VStack as="span" gap={2} grow>
         <Text size="subheadline" weight="semibold" tone="text">{tr("Node.js isn't on {name}").replaceAll('{name}', store.hostName)}</Text>
-        <Text size="caption" tone="secondary">Some agents need it to run. Codync can add a copy just for them.</Text>
+        <Text size="caption" tone="secondary">{tr(`Some agents need it to run. Codync can add a copy just for them.`)}</Text>
       </VStack>
       <Button onClick={onAdd}>Add Node.js</Button>
     </div>
@@ -254,6 +254,7 @@ function AgentKeysForm({ backend, method, saved, back, done }: {
   back: () => void
   done: (auth: AgentAuth) => void
 }) {
+  const tr = useTr()
   const store = useStore()
   const [values, setValues] = useState<Record<string, string>>({})
   const [saving, setSaving] = useState(false)
@@ -293,7 +294,7 @@ function AgentKeysForm({ backend, method, saved, back, done }: {
                   placeholder={saved.includes(v.name) ? 'Saved (type to replace)' : v.name}
                   onChange={(x) => setValues((old) => ({ ...old, [v.name]: x }))}
                 />
-                <Text size="caption" tone="secondary">{v.label + (v.optional ? ' (optional)' : '')}</Text>
+                <Text size="caption" tone="secondary">{v.label + (v.optional ? tr(` (optional)`) : '')}</Text>
               </VStack>
             ))}
           </CardSection>

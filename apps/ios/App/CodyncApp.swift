@@ -14,7 +14,7 @@ struct CodyncApp: App {
     @Environment(\.scenePhase) private var scenePhase
     @AppStorage(Appearance.storageKey) private var appearance = Appearance.system
     @AppStorage("onboardingCompleted") private var onboardingCompleted = false
-    @AppStorage(AppLanguage.storageKey) private var appLanguageRaw = AppLanguage.system.rawValue
+    @AppStorage(AppLanguage.storageKey, store: AppLanguage.defaults) private var appLanguageRaw = AppLanguage.system.rawValue
     /// Cold launch with a computer to reach: the splash covers its connect and catch-up.
     @State private var launching = !AppStore.shared.accounts.computers.isEmpty
     init() {

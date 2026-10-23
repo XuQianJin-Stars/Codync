@@ -169,13 +169,14 @@ export function ChipChoice<T extends string | number>({ label, selection, option
 
 /** A list of choices, one per row with a checkmark: the replacement for `.inline` pickers. */
 export function ChoiceList<T extends string>({ selection, options, onChange }: { selection: T; options: { id: T; label: string; detail?: string | null }[]; onChange: (id: T) => void }) {
+  const tr = useTr()
   return (
     <VStack gap={10}>
       {options.map((o) => (
         <button key={o.id} className="choice-row" onClick={() => onChange(o.id)}>
           <VStack gap={2} className="choice-row-label">
-            <Text tone="text">{o.label}</Text>
-            {o.detail ? <Text size="compactSecondary" tone="secondary">{o.detail}</Text> : null}
+            <Text tone="text">{tr(o.label)}</Text>
+            {o.detail ? <Text size="compactSecondary" tone="secondary">{tr(o.detail)}</Text> : null}
           </VStack>
           <span className={`check-slot${o.id === selection ? ' on' : ''}`}>
             <Icon name="checkmark" size={10} weight="semibold" />
@@ -200,12 +201,15 @@ export function CardForm({ children }: { children: ReactNode }) {
  * rounded group whose rows are split by inset hairlines.
  */
 export function CardSection({ title, footer, accessory, children }: { title?: string | null; footer?: ReactNode; accessory?: ReactNode; children: ReactNode }) {
+  const tr = useTr()
   const rows = Children.toArray(children)
+  const heading = typeof title === 'string' ? tr(title) : title
+  const note = typeof footer === 'string' ? tr(footer) : footer
   return (
     <section className="card-section">
-      {title || accessory ? (
+      {heading || accessory ? (
         <div className="card-section-title">
-          {title ? <Text as="h3" size="body" weight="semibold" tone="text">{title}</Text> : null}
+          {heading ? <Text as="h3" size="body" weight="semibold" tone="text">{heading}</Text> : null}
           <Spacer />
           {accessory}
         </div>
@@ -218,7 +222,7 @@ export function CardSection({ title, footer, accessory, children }: { title?: st
           </Fragment>
         ))}
       </div>
-      {footer ? <div className="card-section-footer">{typeof footer === 'string' ? <Text size="caption" tone="secondary">{footer}</Text> : footer}</div> : null}
+      {note ? <div className="card-section-footer">{typeof footer === 'string' ? <Text size="caption" tone="secondary">{note}</Text> : footer}</div> : null}
     </section>
   )
 }
@@ -231,10 +235,11 @@ export function Hairline({ className, style }: { className?: string; style?: CSS
 /** A row's title with an optional note under it (rows, fields and switches share it). */
 export function RowLabel({ label, detail, labelId, detailId, grow = false }: { label: ReactNode; detail?: string | null; labelId?: string; detailId?: string; grow?: boolean }) {
   const tr = useTr()
+  const heading = typeof label === 'string' ? tr(label) : label
   const note = detail ? tr(detail) : detail
   return (
     <VStack as="span" gap={3} grow={grow} shrink>
-      <Text id={labelId} tone="text">{label}</Text>
+      <Text id={labelId} tone="text">{heading}</Text>
       {note ? <span id={detailId} className="detail-note" title={note}>{note}</span> : null}
     </VStack>
   )

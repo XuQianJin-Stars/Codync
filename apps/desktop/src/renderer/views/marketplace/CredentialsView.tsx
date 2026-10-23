@@ -63,8 +63,8 @@ export function CredentialsView({ onBack }: { onBack: () => void }) {
               <Icon name="chevron.right" size={10} />
             </button>
           ))}
-          {!plugins.installedConnectors.some((c) => c.keys.length > 0) ? <Text size="caption" tone="secondary">No saved connection credentials yet.</Text> : null}
-          <Text size="caption" tone="secondary">Values stay hidden. Select a connection to replace its credentials.</Text>
+          {!plugins.installedConnectors.some((c) => c.keys.length > 0) ? <Text size="caption" tone="secondary">{tr(`No saved connection credentials yet.`)}</Text> : null}
+          <Text size="caption" tone="secondary">{tr(`Values stay hidden. Select a connection to replace its credentials.`)}</Text>
         </CardSection>
         <LoginsSection />
         <CardSection title="1Password" footer="Use a service account with read access only to a dedicated shared vault. The 1Password CLI must be installed on the computer.">
@@ -72,7 +72,7 @@ export function CredentialsView({ onBack }: { onBack: () => void }) {
           <CredentialField label="Service account token" value={token} onChange={setToken} placeholder="Paste your token" secret />
           <div><Button disabled={busy || !token} onClick={() => void save(token)}>Connect</Button></div>
           {status?.onePasswordConnected ? <div><Button kind="secondary" disabled={busy} onClick={() => void save('')}>Disconnect</Button></div> : null}
-          <Text size="footnote" tone="secondary">Use op://vault/item/field in a connector's credential field. Codync retrieves the value when the connector runs.</Text>
+          <Text size="footnote" tone="secondary">{tr(`Use op://vault/item/field in a connector's credential field. Codync retrieves the value when the connector runs.`)}</Text>
         </CardSection>
         {busy ? <Spinner /> : null}
         {error ? <ErrorText text={error} /> : null}

@@ -47,8 +47,14 @@ static PHRASES: LazyLock<HashMap<String, String>> = LazyLock::new(|| {
 static PREFERENCE: LazyLock<Mutex<AppLanguage>> = LazyLock::new(|| Mutex::new(read_preference()));
 
 fn read_preference() -> AppLanguage {
-    std::fs::read_to_string(crate::service::data_dir().join("tui-language"))
-        .map_or(AppLanguage::System, |text| AppLanguage::parse(text.trim()))
+    match std::fs::read_to_string(crate::service::data_dir().join("tui-language")) {
+        Ok(text) => AppLanguage::parse(text.trim()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => AppLanguage::System,
+        Err(error) => {
+            tracing::warn!(%error, "couldn't read the terminal language");
+            AppLanguage::System
+        }
+    }
 }
 
 fn system_is_chinese() -> bool {
@@ -238,20 +244,30 @@ fn translate(text: &str, chinese: bool) -> Cow<'_, str> {
 
 /// The choice shown beside the palette row.
 pub(in crate::tui) fn language_title() -> Cow<'static, str> {
-    match *PREFERENCE.locked() {
+    // Copy the choice out first. `uses_chinese` locks `PREFERENCE` again, and the palette asks
+    // for this title on every row, so holding the guard across that call freezes the terminal.
+    let preference = *PREFERENCE.locked();
+    match preference {
         AppLanguage::Zh => Cow::Borrowed("中文"),
         AppLanguage::En => Cow::Borrowed("English"),
-        AppLanguage::System => translate("Follow system", uses_chinese()),
+        AppLanguage::System => translate("Follow system", system_is_chinese()),
     }
 }
 
 /// Follow system, then Chinese, then English, then back. The choice is kept for the next run.
 pub(in crate::tui) fn cycle_language() -> Cow<'static, str> {
-    let next = PREFERENCE.locked().next();
-    *PREFERENCE.locked() = next;
+    let next = {
+        let mut preference = PREFERENCE.locked();
+        let next = preference.next();
+        *preference = next;
+        next
+    };
     let dir = crate::service::data_dir();
-    let _ = std::fs::create_dir_all(&dir);
-    let _ = std::fs::write(dir.join("tui-language"), next.stored());
+    if let Err(error) =
+        std::fs::create_dir_all(&dir).and_then(|()| std::fs::write(dir.join("tui-language"), next.stored()))
+    {
+        tracing::warn!(%error, "couldn't save the terminal language");
+    }
     language_title()
 }
 
@@ -289,6 +305,12 @@ mod tests {
         assert_eq!(super::compact_time("3h 20m").as_deref(), Some("3小时20分"));
         assert_eq!(super::compact_time("2d 6h").as_deref(), Some("2天6小时"));
         assert_eq!(super::compact_time("Sep 26"), None);
+    }
+
+    #[test]
+    fn the_palette_label_reads_the_choice_without_locking_twice() {
+        let title = super::language_title();
+        assert!(matches!(title.as_ref(), "跟随系统" | "Follow system" | "中文" | "English"));
     }
 
     #[test]

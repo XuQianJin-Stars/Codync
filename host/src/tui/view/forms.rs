@@ -91,7 +91,7 @@ pub(super) fn form_view(buf: &mut Buffer, area: Rect, app: &App, f: &Form) {
         };
         match field {
             Field::Name => {
-                text_field(buf, &f.name, "Name", y);
+                text_field(buf, &f.name, tr("Name").as_ref(), y);
                 if let Some(by) = created_by(app, &f.bot_id)
                     && w(&f.name.text) + w(&by) + 2 < usize::from(vw)
                 {
@@ -320,7 +320,7 @@ pub(super) fn group_view(buf: &mut Buffer, area: Rect, app: &App, g: &GroupForm)
     let inner = frame_box(buf, r, t.text, t.panel, Some((title.as_ref(), t.text)));
     let label = |on: bool| if on { t.bold } else { t.secondary }.patch(t.panel);
     let on_bots = g.field == GroupField::Bots;
-    put(buf, inner.x, inner.y, 8, "Name", label(g.field == GroupField::Name));
+    put(buf, inner.x, inner.y, 8, tr("Name").as_ref(), label(g.field == GroupField::Name));
     let default = app.group_default_name(&g.members);
     let fallback = tr("Name your group");
     let placeholder = if default.is_empty() { fallback.as_ref() } else { default.as_str() };
@@ -349,7 +349,14 @@ pub(super) fn group_view(buf: &mut Buffer, area: Rect, app: &App, g: &GroupForm)
     let list_h = usize::from(inner.height.saturating_sub(top + 5));
     let off = g.cursor.saturating_sub(list_h.saturating_sub(1));
     if bots.is_empty() {
-        put(buf, inner.x, inner.y + top + 1, inner.width, "No bots yet. Create a bot first.", t.dim.patch(t.panel));
+        put(
+            buf,
+            inner.x,
+            inner.y + top + 1,
+            inner.width,
+            tr("No bots yet. Create a bot first.").as_ref(),
+            t.dim.patch(t.panel),
+        );
     }
     for (y, (i, b)) in (inner.y + top + 1..).zip(bots.iter().enumerate().skip(off).take(list_h)) {
         let sel = on_bots && i == g.cursor;
@@ -377,7 +384,7 @@ pub(super) fn group_view(buf: &mut Buffer, area: Rect, app: &App, g: &GroupForm)
             inner.x,
             by - 1,
             inner.width,
-            "Everyone answers in turn unless you @mention someone.",
+            tr("Everyone answers in turn unless you @mention someone.").as_ref(),
             t.dim.patch(t.panel),
         );
     }

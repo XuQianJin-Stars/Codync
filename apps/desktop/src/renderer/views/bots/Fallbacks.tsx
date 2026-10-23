@@ -46,7 +46,7 @@ export function FallbacksRow({ draft, bot, onChange }: { draft: BotDraft; bot: B
   return (
     <VStack gap={8}>
       <HStack gap={2}>
-        <Text tone="text">Fallbacks</Text>
+        <Text tone="text">{tr(`Fallbacks`)}</Text>
         <IconButton title="About fallbacks" icon="info.circle" size={22} onClick={() => setAbout(true)} />
         <Spacer />
         {list.length < MAX_FALLBACKS && choices.length ? <IconButton title="Add fallback" icon="plus" className="fade-in" onClick={() => setAdding(true)} /> : null}
@@ -65,10 +65,10 @@ export function FallbacksRow({ draft, bot, onChange }: { draft: BotDraft; bot: B
           />
         ))
       ) : (
-        <Text tone="secondary">No fallbacks yet.</Text>
+        <Text tone="secondary">{tr(`No fallbacks yet.`)}</Text>
       )}
       <Text size="caption" tone="secondary">
-        {tr('If {agent} runs out of usage or can\'t answer, the bot carries on with the next one. Chat, memory and workspace carry over.').replace('{agent}', store.backendName(draft.backend))}
+        {tr('If {agent} runs out of usage or can\'t answer, the bot carries on with the next one. Chat, memory and workspace carry over.').replace(tr(`{agent}`), store.backendName(draft.backend))}
       </Text>
       <Dialog open={about} title="Fallbacks" message={ABOUT} actions={[]} cancel="OK" onClose={() => setAbout(false)} />
       <FormSheet open={adding} onClose={() => setAdding(false)} width={460} height={420}>
@@ -108,10 +108,10 @@ function FallbackRow({ fallback, index, count, bot, now, move, remove }: {
       </IconSlot>
       <AgentIcon registry={store.agentRegistry(fallback.backend)} size={14} />
       <VStack gap={2} grow>
-        <Text tone="text" truncate>{`${tr(name)} · ${tr(fallback.model || 'Default')}`}</Text>
+        <Text tone="text" truncate>{`${name} · ${fallback.model || tr(`Default`)}`}</Text>
         {rest ? <Text size="caption" tone="secondary">{restLine(rest, now)}</Text> : null}
       </VStack>
-      {bot.agentStep?.agent === fallback.backend ? <Text size="caption" weight="medium" tone="text" className="fallback-chip fade-in">In use</Text> : null}
+      {bot.agentStep?.agent === fallback.backend ? <Text size="caption" weight="medium" tone="text" className="fallback-chip fade-in">{tr(`In use`)}</Text> : null}
       <DropdownMenu
         className="icon-button fallback-menu"
         title="More"
@@ -129,6 +129,7 @@ function FallbackRow({ fallback, index, count, bot, now, move, remove }: {
 
 /** The "Add fallback" sheet: another agent, and the model to use on it. */
 function AddFallback({ choices, onAdd }: { choices: Backend[]; onAdd: (f: Fallback) => void }) {
+  const tr = useTr()
   const [backend, setBackend] = useState((choices.find((b) => b.available) ?? choices[0])?.id ?? '')
   const [model, setModel] = useState<string | null>(null)
   const [modelOptions, setModelOptions] = useState<Record<string, string>>({})
@@ -140,7 +141,7 @@ function AddFallback({ choices, onAdd }: { choices: Backend[]; onAdd: (f: Fallba
   }
   return (
     <SheetPage>
-      <ModalHeader title="Add fallback" trailing={<IconButton title="Add" icon="checkmark" disabled={!backend} onClick={() => onAdd({ backend, model, modelOptions })} />} />
+      <ModalHeader title={tr(`Add fallback`)} trailing={<IconButton title="Add" icon="checkmark" disabled={!backend} onClick={() => onAdd({ backend, model, modelOptions })} />} />
       <CardForm>
         <CardSection>
           <ValueRow label="Agent">

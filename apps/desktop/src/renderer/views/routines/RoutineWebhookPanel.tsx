@@ -7,9 +7,12 @@ import { useStore } from '../../store/context'
 import { errorText, type RoutineWebhook } from './routine'
 import { LabeledRow } from './RoutineScheduleFields'
 import './routines.css'
+import { useTr } from '../../lib/use-language'
+
 
 /** A saved webhook routine's address and key: copy either, reveal or replace the key. */
 export function RoutineWebhookPanel({ botId, routineId }: { botId: string; routineId: string }) {
+  const tr = useTr()
   const store = useStore()
   const [webhook, setWebhook] = useState<RoutineWebhook | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -82,7 +85,7 @@ export function RoutineWebhookPanel({ botId, routineId }: { botId: string; routi
       ) : error ? (
         <Text size="caption" tone="danger" className="routine-caption">{error}</Text>
       ) : (
-        <Text size="caption" tone="secondary" className="routine-caption">Loading webhook…</Text>
+        <Text size="caption" tone="secondary" className="routine-caption">{tr(`Loading webhook…`)}</Text>
       )}
       <Dialog
         open={confirmRotate}

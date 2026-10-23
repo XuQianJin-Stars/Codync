@@ -400,6 +400,7 @@ function Row({ item, chat, openTrace, onReply, openRoutine, openAgent, openBotCh
 
 /** The start of an empty group chat: who's in it and how the room works. */
 function GroupIntroCard({ group }: { group: Bot }) {
+  const tr = useTr()
   const store = useStore()
   const members = store.members(group)
   const names = members.map((m) => m.name)
@@ -409,7 +410,7 @@ function GroupIntroCard({ group }: { group: Bot }) {
       <Text as="div" size="title2" weight="semibold" tone="text">{group.name}</Text>
       {group.name !== names.join(', ') ? <Text as="div" size="subheadline" tone="secondary">{names.join(' · ')}</Text> : null}
       {group.description ? <Text as="div" size="subheadline" tone="secondary">{group.description}</Text> : null}
-      <Text as="div" size="callout" tone="secondary" className="intro-card-hint balanced">Everyone answers in turn. @mention a bot to ask just that one.</Text>
+      <Text as="div" size="callout" tone="secondary" className="intro-card-hint balanced">{tr(`Everyone answers in turn. @mention a bot to ask just that one.`)}</Text>
     </div>
   )
 }
@@ -428,7 +429,7 @@ function IntroCard({ bot }: { bot: Bot }) {
         {where}
       </Text>
       {bot.description ? <Text as="div" size="subheadline" tone="secondary">{bot.description}</Text> : null}
-      <Text as="div" size="callout" tone="secondary" className="intro-card-hint">Tell it what you need. You'll get a notification when it's done or needs you.</Text>
+      <Text as="div" size="callout" tone="secondary" className="intro-card-hint">{tr(`Tell it what you need. You'll get a notification when it's done or needs you.`)}</Text>
     </div>
   )
 }

@@ -24,7 +24,7 @@ export function AnalyticsSheet() {
   const tr = useTr()
   return (
     <SheetPage>
-      <ModalHeader icon="chart.bar" title="Usage analytics" />
+      <ModalHeader icon="chart.bar" title={tr(`Usage analytics`)} />
       <CardForm>
         <CardSection
           footer={

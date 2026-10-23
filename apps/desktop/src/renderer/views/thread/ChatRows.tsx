@@ -149,22 +149,23 @@ export function UserBubble({ entry, botWorking, reply }: { entry: Entry; botWork
 }
 
 function UserStatus({ entry, botWorking, hovering }: { entry: Entry; botWorking: boolean; hovering: boolean }) {
+  const tr = useTr()
   const store = useStore()
   switch (entry.data.status) {
     case 'sending':
-      return <Text size="caption2" tone="tertiary">Sending…</Text>
+      return <Text size="caption2" tone="tertiary">{tr(`Sending…`)}</Text>
     case 'queued':
-      return <Text size="caption2" tone="tertiary">{botWorking ? 'Queued until this response finishes' : 'Queued'}</Text>
+      return <Text size="caption2" tone="tertiary">{botWorking ? tr(`Queued until this response finishes`) : tr(`Queued`)}</Text>
     case 'failed':
       return (
         <HStack as="span" gap={2}>
-          <Text size="caption2" weight="semibold" tone="danger" className="user-status-error">Failed to send</Text>
+          <Text size="caption2" weight="semibold" tone="danger" className="user-status-error">{tr(`Failed to send`)}</Text>
           <IconButton title="Resend" icon="arrow.clockwise" size={24} onClick={() => store.retry(entry)} />
           <IconButton title="Delete" icon="trash" size={24} onClick={() => store.discard(entry)} />
         </HStack>
       )
     case 'cancelled':
-      return <Text size="caption2" tone="tertiary">Not sent — stopped</Text>
+      return <Text size="caption2" tone="tertiary">{tr(`Not sent — stopped`)}</Text>
     default:
       return <Text size="caption" tone="tertiary" className={hovering ? 'user-status-time shown' : 'user-status-time'}>{relativeTime.time(entry.createdAt)}</Text>
   }
@@ -223,13 +224,14 @@ export function NoticeRow({ entry, addFallback }: { entry: Entry; addFallback?: 
 
 /** The bot's current activity and elapsed time. */
 export function WorkingIndicator({ bot }: { bot: Bot }) {
+  const tr = useTr()
   const waiting = needsInput(bot)
   return (
     <VStack align="flex-start" className="agent-inset">
       <div className="working">
         <HStack as="span" gap={8}>
           <ThinkingOrb state={waiting ? 'listening' : 'working'} size={16} color={waiting ? 'var(--warning)' : 'var(--secondary)'} />
-          <Text size="subheadline" tone={waiting ? 'attention' : 'secondary'} truncate>{bot.activity || 'Working…'}</Text>
+          <Text size="subheadline" tone={waiting ? 'attention' : 'secondary'} truncate>{bot.activity || tr(`Working…`)}</Text>
           {bot.startedAt ? <Timer since={bot.startedAt} /> : null}
         </HStack>
       </div>

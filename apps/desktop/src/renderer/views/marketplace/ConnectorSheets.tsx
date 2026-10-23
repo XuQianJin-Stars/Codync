@@ -60,7 +60,7 @@ export function InstallConnectorSheet({ item, requestId, done }: { item: MarketC
     <SheetPage>
       <ModalHeader
         icon="point.3.connected.trianglepath.dotted"
-        title="Add connector"
+        title={tr(`Add connector`)}
         trailing={saving ? <Spinner /> : <IconButton title="Add" icon="plus" disabled={installed === null && missing} onClick={() => void install()} />}
       />
       <CardForm>
@@ -93,7 +93,7 @@ export function InstallConnectorSheet({ item, requestId, done }: { item: MarketC
               <Text tone="secondary">
                 {option.kind === 'remote'
                   ? tr('No keys needed here. If {name} wants you to sign in, its sign-in page opens next.').replaceAll('{name}', item.title)
-                  : 'No setup needed.'}
+                  : tr(`No setup needed.`)}
               </Text>
             ) : null}
             {option.inputs.map((input) => (
@@ -166,7 +166,7 @@ export function CustomConnectorSheet() {
 
   return (
     <SheetPage>
-      <ModalHeader icon="point.3.connected.trianglepath.dotted" title="Custom connector" trailing={saving ? <Spinner /> : <IconButton title="Add" icon="plus" disabled={!ready} onClick={() => void save()} />} />
+      <ModalHeader icon="point.3.connected.trianglepath.dotted" title={tr(`Custom connector`)} trailing={saving ? <Spinner /> : <IconButton title="Add" icon="plus" disabled={!ready} onClick={() => void save()} />} />
       <CardForm>
         <CardSection footer={footer}>
           <SegmentedChoice selection={mode} onChange={setMode} options={[{ id: 'command', label: 'Command' }, { id: 'url', label: 'URL' }, { id: 'config', label: 'Config' }]} />
@@ -190,6 +190,7 @@ export function CustomConnectorSheet() {
 }
 
 export function NewSkillSheet() {
+  const tr = useTr()
   const store = useStore()
   const plugins = usePlugins(store)
   const dismiss = useDismiss()
@@ -214,7 +215,7 @@ export function NewSkillSheet() {
     <SheetPage>
       <ModalHeader
         icon="square.and.pencil"
-        title="New skill"
+        title={tr(`New skill`)}
         trailing={saving ? <Spinner /> : <IconButton title="Save" icon="checkmark" disabled={!name.trim() || !instructions.trim()} onClick={() => void save()} />}
       />
       <CardForm>

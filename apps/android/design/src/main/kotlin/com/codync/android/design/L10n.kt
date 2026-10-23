@@ -43,13 +43,29 @@ private data class Piece(val literal: String?, val token: String?)
  * A sentence the host or a view already filled in, matched back to its `{token}` phrase.
  * A slot that is itself a known phrase (a setup hint) is translated too.
  */
-private fun templated(text: String, phrases: Map<String, String>, depth: Int = 0): String? {
-    val matches = phrases.keys.mapNotNull { key ->
+private val templateLock = Any()
+private var cachedKey: Map<String, String>? = null
+private var cachedTemplates: List<Triple<Int, String, List<Piece>>> = emptyList()
+
+/** Parsed once per phrase-table instance. Callers keep one map for the process. */
+private fun templates(phrases: Map<String, String>): List<Triple<Int, String, List<Piece>>> {
+    synchronized(templateLock) {
+        if (cachedKey === phrases) return cachedTemplates
+    }
+    val built = phrases.keys.mapNotNull { key ->
         val pieces = parseTemplate(key) ?: return@mapNotNull null
         val literal = pieces.sumOf { it.literal?.length ?: 0 }
         if (literal < 6) null else Triple(literal, key, pieces)
     }.sortedWith(compareByDescending<Triple<Int, String, List<Piece>>> { it.first }.thenByDescending { it.second.length })
-    for ((_, key, pieces) in matches) {
+    synchronized(templateLock) {
+        cachedKey = phrases
+        cachedTemplates = built
+    }
+    return built
+}
+
+private fun templated(text: String, phrases: Map<String, String>, depth: Int = 0): String? {
+    for ((_, key, pieces) in templates(phrases)) {
         val phrase = phrases[key] ?: continue
         fill(text, pieces, phrase, phrases, depth)?.let { return it }
     }

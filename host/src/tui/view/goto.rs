@@ -15,7 +15,7 @@ use super::style::{avatar, glyph, theme};
 pub(super) fn goto(buf: &mut Buffer, area: Rect, app: &mut App, g: &super::super::app::Goto, items: &[GotoItem]) {
     let t = theme();
     let r = centered(area, 80, 24);
-    let inner = frame_box(buf, r, t.text, t.panel, Some(("Go to", t.text)));
+    let inner = frame_box(buf, r, t.text, t.panel, Some((tr("Go to").as_ref(), t.text)));
     let nbots = items.iter().filter(|i| matches!(i, GotoItem::Bot(_))).count();
     rput(buf, inner.right(), inner.y, &format!("{nbots} of {}", app.bots.len()), t.dim.patch(t.panel));
     field_line(
@@ -76,7 +76,14 @@ pub(super) fn goto(buf: &mut Buffer, area: Rect, app: &mut App, g: &super::super
                     if y > list_top {
                         y += 1;
                     }
-                    put(buf, inner.x, y, inner.width, "ACTIONS", t.dim.patch(t.panel).add_modifier(Modifier::BOLD));
+                    put(
+                        buf,
+                        inner.x,
+                        y,
+                        inner.width,
+                        tr("ACTIONS").as_ref(),
+                        t.dim.patch(t.panel).add_modifier(Modifier::BOLD),
+                    );
                     y += 1;
                 }
                 if sel {
@@ -103,7 +110,7 @@ pub(super) fn goto(buf: &mut Buffer, area: Rect, app: &mut App, g: &super::super
         }
     }
     if items.is_empty() {
-        put(buf, inner.x, list_top, inner.width, "Nothing matches", t.dim.patch(t.panel));
+        put(buf, inner.x, list_top, inner.width, tr("Nothing matches").as_ref(), t.dim.patch(t.panel));
     }
     hline(buf, inner.x, inner.bottom() - 3, inner.width, t.line.patch(t.panel));
     if let Some(GotoItem::Bot(id)) = items.get(g.cursor)

@@ -154,7 +154,8 @@ pub(in crate::tui) fn input_line(
         if active {
             set_cursor(Position::new(x, y));
         }
-        put(buf, x, y, r.right().saturating_sub(x), placeholder, t.dim.patch(t.panel));
+        let hint = super::super::l10n::tr(placeholder);
+        put(buf, x, y, r.right().saturating_sub(x), hint.as_ref(), t.dim.patch(t.panel));
     } else {
         let room = usize::from(r.right().saturating_sub(x + 1));
         let text = e.text.replace('\n', " ");

@@ -8,9 +8,12 @@ import { Text } from '../../components/Text'
 import { useModel } from '../../lib/observable'
 import type { BotStore } from '../../store/bot-store'
 import { deviceIcon, errorText, liveClient, relativeDay } from './parts'
+import { useTr } from '../../lib/use-language'
+
 
 /** The devices that can use a computer this app manages, each one revocable. */
 export function AuthorizedDevicesSection({ store }: { store: BotStore }) {
+  const tr = useTr()
   useModel(store)
   const [devices, setDevices] = useState<AuthorizedDevice[] | { error: string } | null>(null)
   const [confirmRevoke, setConfirmRevoke] = useState<AuthorizedDevice | null>(null)
@@ -48,7 +51,7 @@ export function AuthorizedDevicesSection({ store }: { store: BotStore }) {
             ? [<Text key="error" tone="danger" className="settings-appear">{devices.error}</Text>]
             : [
                 ...(devices.length === 0
-                  ? [<Text key="none" tone="secondary">None yet. Pair an iPhone, or approve one from your account.</Text>]
+                  ? [<Text key="none" tone="secondary">{tr(`None yet. Pair an iPhone, or approve one from your account.`)}</Text>]
                   : []),
                 ...devices.map((device) => (
                   <HStack key={device.key} gap={8} className="settings-row settings-appear">

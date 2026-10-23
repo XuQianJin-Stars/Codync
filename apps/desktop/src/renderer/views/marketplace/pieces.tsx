@@ -75,7 +75,6 @@ export function ItemRow({ title, subtitle, icon, trailing, onOpen }: {
   trailing?: ReactNode
   onOpen?: () => void
 }) {
-  const tr = useTr()
   return (
     <div
       className={`market-row ${onOpen ? 'openable' : ''}`}
@@ -91,8 +90,8 @@ export function ItemRow({ title, subtitle, icon, trailing, onOpen }: {
     >
       <div className="market-row-icon">{icon}</div>
       <VStack gap={2} grow>
-        <Text size="body" weight="medium" tone="text" truncate title={tr(title)}>{title}</Text>
-        <Text size="subheadline" tone="secondary" truncate title={tr(subtitle)}>{subtitle}</Text>
+        <Text size="body" weight="medium" tone="text" truncate title={title}>{title}</Text>
+        <Text size="subheadline" tone="secondary" truncate title={subtitle}>{subtitle}</Text>
       </VStack>
       {trailing}
     </div>
@@ -203,9 +202,10 @@ export function WebLink({ title, url, className }: { title: string; url: string;
 
 /** A full screen's top bar (kit `ScreenHeader`): back on the leading side, centered title, trailing. */
 export function ScreenHeader({ title, onBack, trailing }: { title: string; onBack: () => void; trailing?: ReactNode }) {
+  const tr = useTr()
   return (
     <HStack gap={6} className="market-screen-header">
-      <Text as="div" size="compactBody" weight="semibold" tone="text" truncate className="market-screen-title">{title}</Text>
+      <Text as="div" size="compactBody" weight="semibold" tone="text" truncate className="market-screen-title">{tr(title)}</Text>
       <IconButton title="Back" icon="chevron.left" onClick={onBack} />
       <Spacer min={8} />
       {trailing}

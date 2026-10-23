@@ -12,8 +12,8 @@ pub(in crate::tui) fn put(buf: &mut Buffer, x: u16, y: u16, max: u16, s: &str, s
     if max == 0 || y >= buf.area.bottom() {
         return x;
     }
-    let shown = super::super::l10n::tr(s);
-    let (end, _) = buf.set_stringn(x, y, shown.as_ref(), usize::from(max), style);
+    // Callers translate interface labels. Names, drafts and message previews stay as written.
+    let (end, _) = buf.set_stringn(x, y, s, usize::from(max), style);
     end
 }
 
@@ -26,10 +26,9 @@ pub(super) fn put_line(buf: &mut Buffer, x: u16, y: u16, max: u16, line: &Line<'
 }
 
 pub(in crate::tui) fn rput(buf: &mut Buffer, right: u16, y: u16, s: &str, style: Style) -> u16 {
-    let shown = super::super::l10n::tr(s);
-    let width = u16::try_from(w(shown.as_ref())).unwrap_or(0);
+    let width = u16::try_from(w(s)).unwrap_or(0);
     let x = right.saturating_sub(width);
-    put(buf, x, y, width, shown.as_ref(), style);
+    put(buf, x, y, width, s, style);
     x
 }
 
@@ -78,15 +77,7 @@ pub(in crate::tui) fn frame_box(
     }
     put(buf, r.x, r.bottom() - 1, r.width, &format!("╰{}╯", "─".repeat(inner)), b);
     if let Some((t, s)) = title {
-        let shown = super::super::l10n::tr(t);
-        put(
-            buf,
-            r.x + 2,
-            r.y,
-            r.width.saturating_sub(4),
-            &format!(" {shown} "),
-            s.patch(bg).add_modifier(Modifier::BOLD),
-        );
+        put(buf, r.x + 2, r.y, r.width.saturating_sub(4), &format!(" {t} "), s.patch(bg).add_modifier(Modifier::BOLD));
     }
     Rect::new(r.x + 2, r.y + 1, r.width.saturating_sub(4), r.height.saturating_sub(2))
 }

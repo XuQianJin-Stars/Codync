@@ -5,6 +5,7 @@ use ratatui::layout::Rect;
 use ratatui::style::Modifier;
 
 use super::super::app::Editor;
+use super::super::l10n::tr;
 use super::buffer::{centered, frame_box, put, u};
 use super::overlay::field_line;
 use super::style::theme;
@@ -80,7 +81,7 @@ pub(super) fn help(buf: &mut Buffer, area: Rect, filter: &Editor) {
     let t = theme();
     // Two columns fit everything from 42 rows up; shorter windows get a third.
     let r = centered(area, if area.height >= 42 { 80 } else { 120 }, 40);
-    let inner = frame_box(buf, r, t.text, t.panel, Some(("Keys", t.text)));
+    let inner = frame_box(buf, r, t.text, t.panel, Some((tr("Keys").as_ref(), t.text)));
     field_line(buf, inner, inner.y, filter, "filter actions and keys", true);
     let q = filter.text.to_lowercase();
     let items: Vec<&(&str, &str, &str)> = HELP

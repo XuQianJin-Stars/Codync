@@ -21,7 +21,7 @@ struct SettingsView: View {
     @State private var confirmStartOver = false
     @State private var voice: VoiceTarget?
     @State private var aboutAnalytics = false
-    @AppStorage(AppLanguage.storageKey) private var appLanguageRaw = AppLanguage.system.rawValue
+    @AppStorage(AppLanguage.storageKey, store: AppLanguage.defaults) private var appLanguageRaw = AppLanguage.system.rawValue
 
     var body: some View {
         CardForm {

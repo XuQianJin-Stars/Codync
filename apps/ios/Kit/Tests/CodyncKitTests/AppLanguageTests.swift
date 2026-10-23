@@ -3,6 +3,25 @@ import Testing
 @testable import CodyncKit
 
 struct AppLanguageTests {
+    @Test func theLanguageChoiceIsReadFromTheStoreItWasWrittenTo() {
+        let name = "AppLanguageTests.\(UUID().uuidString)"
+        let suite = UserDefaults(suiteName: name)!
+        defer { suite.removePersistentDomain(forName: name) }
+        #expect(AppLanguage.preference(in: suite) == .system)
+        suite.set(AppLanguage.zh.rawValue, forKey: AppLanguage.storageKey)
+        #expect(AppLanguage.preference(in: suite) == .zh)
+        #expect(L10n.tr("Pair a computer", preference: AppLanguage.preference(in: suite), systemIsChinese: false) == "配对一台电脑")
+    }
+
+    @Test func theSharedLanguageStoreIsTheAppGroup() {
+        let probe = "appLanguageProbe.\(UUID().uuidString)"
+        defer { AppLanguage.defaults.removeObject(forKey: probe) }
+        AppLanguage.defaults.set("1", forKey: probe)
+        let group = UserDefaults(suiteName: SharedStore.appGroup)
+        #expect(group?.string(forKey: probe) == "1")
+        #expect(UserDefaults.standard.string(forKey: probe) == nil)
+    }
+
     @Test func chineseFollowsTheChoiceNotTheOtherLanguage() {
         #expect(AppLanguage.usesChinese(preference: .zh, systemIsChinese: false))
         #expect(!AppLanguage.usesChinese(preference: .en, systemIsChinese: true))

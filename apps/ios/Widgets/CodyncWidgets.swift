@@ -18,6 +18,15 @@ struct CodyncWidgets: WidgetBundle {
     }
 }
 
+private extension View {
+    /// Widgets read the language the app saved in the shared App Group.
+    func deviceLanguage() -> some View {
+        environment(\.locale, AppLanguage.locale(
+            preference: AppLanguage.preference(),
+            systemIsChinese: AppLanguage.systemIsChinese()))
+    }
+}
+
 // MARK: - Bots at a glance
 
 struct BotsEntry: TimelineEntry {
@@ -67,6 +76,7 @@ struct BotsWidget: Widget {
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: "CodyncBots", provider: BotsTimeline()) { entry in
             BotsWidgetView(entry: entry)
+                .deviceLanguage()
                 .containerBackground(Palette.surface, for: .widget)
         }
         .configurationDisplayName("Bots")
@@ -126,6 +136,7 @@ struct BotsTeamWidget: Widget {
                     EmptyWidget(text: L10n.tr("Open Codync to pair with your computer."))
                 }
             }
+            .deviceLanguage()
             .containerBackground(Palette.surface, for: .widget)
         }
         .configurationDisplayName("Team")
@@ -347,6 +358,7 @@ struct UsageWidget: Widget {
     var body: some WidgetConfiguration {
         AppIntentConfiguration(kind: "CodyncUsage", intent: UsageIntent.self, provider: UsageTimeline()) { entry in
             UsageWidgetView(entry: entry)
+                .deviceLanguage()
                 .containerBackground(Palette.surface, for: .widget)
         }
         .configurationDisplayName("Usage limits")
@@ -433,7 +445,7 @@ struct UsageWidgetView: View {
 
     @ViewBuilder private func resetLine(_ w: UsageWindow) -> some View {
         if let date = w.resetDate, date > entry.date {
-            Text(L10n.resetLine("resets \(RelativeTime.until(date, now: entry.date))"))
+            (Text(L10n.tr("resets")) + Text(" ") + Text(date, style: .relative))
         } else if let text = w.resetDescription {
             Text(L10n.resetLine(text))
         } else {
@@ -573,6 +585,7 @@ struct ProviderUsageView: View {
             }
         }
         .containerBackground(Palette.surface, for: .widget)
+        .deviceLanguage()
         .widgetURL(AppEnvironment.current.link("usage"))
     }
 }

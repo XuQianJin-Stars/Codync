@@ -195,7 +195,7 @@ fn notes(buf: &mut Buffer, body: Rect, memory: &MemorySheet) {
 fn note(buf: &mut Buffer, body: Rect, detail: Option<&Value>, scroll: &Scroll) {
     let Some(detail) = detail else {
         let palette = theme();
-        put(buf, body.x, body.y, body.width, "Loading…", palette.dim.patch(palette.panel));
+        put(buf, body.x, body.y, body.width, tr("Loading…").as_ref(), palette.dim.patch(palette.panel));
         return;
     };
     read(buf, body, s(detail, "path"), detail["content"].as_str().unwrap_or("Deleted."), scroll);

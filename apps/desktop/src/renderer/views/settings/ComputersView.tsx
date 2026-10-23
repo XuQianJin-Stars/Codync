@@ -62,9 +62,9 @@ export function ComputersView() {
             {account.isSignedIn ? <IconButton title="Refresh" icon="arrow.clockwise" onClick={() => void cloud.refresh()} /> : null}
           </SectionHeader>
           {!account.isSignedIn ? (
-            <Text as="div" size="callout" tone="secondary">Sign in to see the other computers in your account.</Text>
+            <Text as="div" size="callout" tone="secondary">{tr(`Sign in to see the other computers in your account.`)}</Text>
           ) : others.length === 0 ? (
-            <Text as="div" size="callout" tone="secondary">No other computers in your account yet.</Text>
+            <Text as="div" size="callout" tone="secondary">{tr(`No other computers in your account yet.`)}</Text>
           ) : null}
           {others.map((computer) => (
             <AccountComputerRow key={computer.computerId} computer={computer} olderCopy={cloud.isOlderCopy(computer)} onRemove={() => setRemovingCopy(computer)} />
@@ -131,11 +131,11 @@ function ManagedComputerCard({ store, ssh: overSSH }: { store: BotStore; ssh: bo
       <Text size="callout" grow>
         {owner
           ? owner.userId === account.user?.userId
-            ? 'In your account'
-            : `In ${owner.email ?? 'another'} account`
+            ? tr(`In your account`)
+            : `In ${owner.email ?? tr(`another`)} account`
           : account.isSignedIn
-            ? 'Not in your account'
-            : 'Sign in to add it to your account'}
+            ? tr(`Not in your account`)
+            : tr(`Sign in to add it to your account`)}
       </Text>
       {owner ? (
         <Button kind="secondary" onClick={() => setConfirmUnclaim(true)} disabled={busy || !manageable}>
@@ -158,7 +158,7 @@ function ManagedComputerCard({ store, ssh: overSSH }: { store: BotStore; ssh: bo
             <VStack grow className="settings-stack">
               <Text size="headline">{name}</Text>
               <Text size="caption" tone="secondary">
-                {`${tr(overSSH ? 'Over SSH' : isMacLabel)} · ${tr(statusText(store))}`}
+                {`${tr(overSSH ? tr(`Over SSH`) : isMacLabel)} · ${tr(statusText(store))}`}
               </Text>
             </VStack>
             {overSSH ? (
@@ -172,7 +172,7 @@ function ManagedComputerCard({ store, ssh: overSSH }: { store: BotStore; ssh: bo
             ? [
                 <Switch key="cloud" className="settings-appear" on={cloud.enabled} disabled={busy || !manageable} onChange={(on) => run(() => app.cloud.setCloud(store, on))}>
                   <span className="settings-stack">
-                    <Text>Reach from anywhere</Text>
+                    <Text>{tr(`Reach from anywhere`)}</Text>
                     <Text size="caption" tone={cloud.lastError ? 'attention' : 'secondary'}>{cloudLine}</Text>
                   </span>
                 </Switch>,
@@ -188,9 +188,9 @@ function ManagedComputerCard({ store, ssh: overSSH }: { store: BotStore; ssh: bo
                   onChange={(on) => (on ? setConfirmAutoApproval(true) : setApproval('code'))}
                 >
                   <span className="settings-stack settings-appear">
-                    <Text>Skip the 6-digit check</Text>
+                    <Text>{tr(`Skip the 6-digit check`)}</Text>
                     <Text size="caption" tone={autoApproval ? 'attention' : 'secondary'}>
-                      {autoApproval ? 'Devices on your account get in on their own.' : 'Each new device shows a code you approve here.'}
+                      {autoApproval ? tr(`Devices on your account get in on their own.`) : tr(`Each new device shows a code you approve here.`)}
                     </Text>
                   </span>
                 </Switch>,
@@ -268,6 +268,7 @@ function PairingPanel({ store }: { store: BotStore }) {
 
 /** Add or change an SSH computer. Only fields ssh takes as separate arguments; nothing goes through a shell. */
 function SSHProfileEditor({ profile: initial, isNew }: { profile: SSHProfile; isNew: boolean }) {
+  const tr = useTr()
   const dismiss = useDismiss()
   const [profile, setProfile] = useState(initial)
   const [port, setPort] = useState(initial.port?.toString() ?? '')
@@ -316,7 +317,7 @@ function SSHProfileEditor({ profile: initial, isNew }: { profile: SSHProfile; is
           <div className="settings-row">
             <span>Key</span>
             <Spacer />
-            <Text tone="secondary">{profile.identityFile?.split('/').pop() ?? 'ssh-agent / SSH config'}</Text>
+            <Text tone="secondary">{profile.identityFile?.split('/').pop() ?? tr(`ssh-agent / SSH config`)}</Text>
             <IconButton
               title="Choose key file"
               icon="key"
@@ -331,7 +332,7 @@ function SSHProfileEditor({ profile: initial, isNew }: { profile: SSHProfile; is
           {field('Codync port', remotePort, setRemotePort, '')}
         </CardSection>
         <Text size="caption" tone="secondary">
-          Codync opens an SSH tunnel to codync-host on that computer's loopback. It uses your SSH config and ssh-agent; agent forwarding stays off.
+          {tr(`Codync opens an SSH tunnel to codync-host on that computer's loopback. It uses your SSH config and ssh-agent; agent forwarding stays off.`)}
         </Text>
         <Reveal show={problem !== null}>
           <Text size="caption" tone="danger">{problem}</Text>

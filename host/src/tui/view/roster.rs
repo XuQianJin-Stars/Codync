@@ -134,11 +134,12 @@ fn preview_raw(b: &Bot) -> (String, Style) {
             if b.activity.is_empty() { tr("Working…").into_owned() } else { tr(&b.activity).into_owned() },
             t.secondary,
         ),
-        Mark::Error => {
-            (if b.last_message.is_empty() { "Something went wrong".into() } else { b.last_message.clone() }, t.red)
-        }
+        Mark::Error => (
+            if b.last_message.is_empty() { tr("Something went wrong").into_owned() } else { b.last_message.clone() },
+            t.red,
+        ),
         Mark::Unread => (b.last_message.clone(), t.text),
-        Mark::Idle if b.last_message.is_empty() => ("No messages yet".into(), t.dim),
+        Mark::Idle if b.last_message.is_empty() => (tr("No messages yet").into_owned(), t.dim),
         Mark::Idle => (b.last_message.clone(), t.secondary),
     }
 }

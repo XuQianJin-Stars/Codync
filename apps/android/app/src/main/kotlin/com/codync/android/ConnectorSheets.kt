@@ -76,9 +76,9 @@ import kotlinx.coroutines.launch
                 }
             }
             if (item.options.size > 1) CardSection("Runs") {
-                val hosted = tr("Hosted by {name}")
-                val onComputer = tr("On {name} ({kind})")
                 row {
+                    val hosted = tr("Hosted by {name}")
+                    val onComputer = tr("On {name} ({kind})")
                     ChoiceList(optionId, item.options.map {
                         Triple(it.id, if (it.kind == "remote") hosted.replace("{name}", item.title)
                             else onComputer.replace("{name}", state.hostName).replace("{kind}", it.kind), null)

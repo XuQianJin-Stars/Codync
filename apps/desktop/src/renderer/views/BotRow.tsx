@@ -39,7 +39,7 @@ function Preview({ bot, store }: { bot: Bot; store: BotStore }) {
     return (
       <HStack as="span" gap={6} shrink>
         <ThinkingOrb state="listening" size={16} color="var(--warning)" />
-        <Text size="callout" tone="attention" truncate>{bot.activity || 'Needs your approval'}</Text>
+        <Text size="callout" tone="attention" truncate>{bot.activity || tr(`Needs your approval`)}</Text>
       </HStack>
     )
   }
@@ -47,10 +47,10 @@ function Preview({ bot, store }: { bot: Bot; store: BotStore }) {
     return (
       <HStack as="span" gap={6} shrink>
         <ThinkingOrb size={13} color="var(--secondary)" />
-        <Text size="callout" tone="secondary" truncate>{bot.activity || 'Working…'}</Text>
+        <Text size="callout" tone="secondary" truncate>{bot.activity || tr(`Working…`)}</Text>
       </HStack>
     )
   }
-  if (bot.status === 'error') return <Text size="callout" tone="danger" truncate>{messagePreview(bot.lastMessage ?? 'Something went wrong')}</Text>
+  if (bot.status === 'error') return <Text size="callout" tone="danger" truncate>{messagePreview(bot.lastMessage ?? tr(`Something went wrong`))}</Text>
   return <Text size="callout" tone="secondary" truncate>{messagePreview(bot.lastMessage ?? (isGroup(bot) ? `${bot.members.length} bots` : `${store.backendName(bot.backend)} · ${place}`))}</Text>
 }

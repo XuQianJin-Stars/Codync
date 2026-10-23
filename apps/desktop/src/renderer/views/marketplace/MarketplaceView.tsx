@@ -145,7 +145,7 @@ export function MarketplaceView({ computers, computer, onComputer }: { computers
       <HStack gap={10} shrink>
         <ComputerBadge computer={store.computer} size={32} />
         <VStack shrink className="market-heading-titles">
-          <Text size="title" weight="semibold" tone="text">Extensions</Text>
+          <Text size="title" weight="semibold" tone="text">{tr(`Extensions`)}</Text>
           {computers.length > 1 ? (
             <DropdownMenu
               title={tr('Switch computer')}
@@ -173,7 +173,7 @@ export function MarketplaceView({ computers, computer, onComputer }: { computers
           </HStack>
           <VStack as="span" align="flex-start" className="market-installed-text">
             <Text tone="secondary">{tr('{count} installed').replaceAll('{count}', String(installedCount))}</Text>
-            <Text size="caption" tone="secondary">Connectors & skills</Text>
+            <Text size="caption" tone="secondary">{tr(`Connectors & skills`)}</Text>
           </VStack>
           <Icon name="chevron.right" size={10} weight="semibold" color="var(--tertiary)" />
         </button>
@@ -235,7 +235,7 @@ export function MarketplaceView({ computers, computer, onComputer }: { computers
             {loadingConnectors ? (
               <SkeletonGrid />
             ) : connectors.items.length === 0 ? (
-              <Text tone="secondary">{query ? tr('No connectors match “{query}”.').replaceAll('{query}', query) : "Couldn't load connectors."}</Text>
+              <Text tone="secondary">{query ? tr('No connectors match “{query}”.').replaceAll('{query}', query) : tr(`Couldn't load connectors.`)}</Text>
             ) : (
               <>
                 <ItemGrid>
@@ -447,11 +447,12 @@ function InstalledView({ back }: { back: () => void }) {
 
 /** A quiet "nothing here" message (replaces `ContentUnavailableView`). */
 function EmptyState({ icon, title, detail }: { icon: string; title: string; detail: string }) {
+  const tr = useTr()
   return (
     <VStack align="center" gap={8} className="market-empty">
       <Icon name={icon} size={28} color="var(--tertiary)" />
-      <Text size="compactBody" weight="semibold" tone="text">{title}</Text>
-      <Text size="compactSecondary" tone="secondary">{detail}</Text>
+      <Text size="compactBody" weight="semibold" tone="text">{tr(title)}</Text>
+      <Text size="compactSecondary" tone="secondary">{tr(detail)}</Text>
     </VStack>
   )
 }

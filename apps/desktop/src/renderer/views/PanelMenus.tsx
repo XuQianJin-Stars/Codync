@@ -8,6 +8,8 @@ import type { Link } from '@shared/analytics'
 import { account, useAccount } from '../store/account'
 import { openLink, useScreenViewed } from '../store/analytics'
 import googleLogo from '../assets/google.svg'
+import { useTr } from '../lib/use-language'
+
 
 // The chat window's floating panels: the account menu (with its profile avatar) and the roster's
 // right-click actions, both built on the same keyboard-driven rows.
@@ -50,6 +52,7 @@ export function AccountPanelLayer({ compact, approvals, onDismiss, onUsage, onSe
   onUsage: () => void
   onSettings: () => void
 }) {
+  const tr = useTr()
   const [page, setPage] = useState<'main' | 'support'>('main')
   const { user, isBusy, errorMessage } = useAccount()
   useScreenViewed('account')
@@ -90,8 +93,8 @@ export function AccountPanelLayer({ compact, approvals, onDismiss, onUsage, onSe
                 <div className="panel-divider" />
                 <div className="panel-identity">
                   <Icon name="person.crop.circle" size={15} />
-                  <Text size="callout" truncate grow>{user?.email ?? 'Account'}</Text>
-                  {signedIn ? null : <Text size="caption">Not signed in</Text>}
+                  <Text size="callout" truncate grow>{user?.email ?? tr(`Account`)}</Text>
+                  {signedIn ? null : <Text size="caption">{tr(`Not signed in`)}</Text>}
                 </div>
               </>
             ) : page === 'support' && i === 0 ? (

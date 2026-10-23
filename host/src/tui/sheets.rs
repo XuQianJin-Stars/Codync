@@ -72,7 +72,8 @@ pub fn page_tabs(buf: &mut Buffer, inner: Rect, current: Page) -> Rect {
     let mut x = inner.x;
     for page in Page::ALL {
         let style = if page == current { t.text.patch(t.sel) } else { t.secondary.patch(t.panel) };
-        x = put(buf, x, inner.y, inner.right().saturating_sub(x), &format!(" {} ", page.label()), style) + 1;
+        let tab = tr(page.label());
+        x = put(buf, x, inner.y, inner.right().saturating_sub(x), &format!(" {tab} "), style) + 1;
     }
     rput(buf, inner.right(), inner.y, "⇧←→ page", t.dim.patch(t.panel));
     Rect::new(inner.x, inner.y + 2, inner.width, inner.height.saturating_sub(2))
@@ -188,7 +189,7 @@ pub fn routine(buf: &mut Buffer, area: Rect, f: &RoutineForm) {
     let vx = inner.x + 9;
     let vw = inner.width.saturating_sub(9);
     let at = |y: u16| Rect::new(vx, y, vw, 1);
-    put(buf, inner.x, inner.y, 9, "Name", label(f.field == RoutineField::Name));
+    put(buf, inner.x, inner.y, 9, tr("Name").as_ref(), label(f.field == RoutineField::Name));
     input_line(buf, at(inner.y), inner.y, &f.name, "Morning summary", f.field == RoutineField::Name, false);
     put(buf, inner.x, inner.y + 2, 9, "Do", label(f.field == RoutineField::Instruction));
     multiline(
