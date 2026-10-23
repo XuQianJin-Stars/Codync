@@ -58,7 +58,8 @@ export class Tray {
 
   /** Menu-bar labels are a system menu, so they translate here. Slots are filled after lookup. */
   private tr(text: string) {
-    const script = this.summary?.script ?? systemScript(app.getLocale())
+    // A summary's null script is English. Only a menu drawn before the first summary follows the computer.
+    const script = this.summary ? this.summary.script : systemScript(app.getLocale())
     const preference = script === 'hant' ? 'zh-Hant' : script === 'hans' ? 'zh' : 'en'
     return translate(text, preference, 'en')
   }
