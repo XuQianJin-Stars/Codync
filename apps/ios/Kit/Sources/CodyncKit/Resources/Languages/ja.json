@@ -808,7 +808,7 @@
   "Install the Devin CLI (curl -fsSL https://cli.devin.ai/install.sh | bash) and run `devin auth login`.": "Devin CLI (curl -fsSL https://cli.devin.ai/install.sh | bash) をインストールし、`devin auth login` を実行します。",
   "Install Qoder CLI (curl -fsSL https://qoder.com/install | bash) and run `qodercli login`.": "Qoder CLI (curl -fsSL https://qoder.com/install | bash) をインストールし、`qodercli login` を実行します。",
   "Install CodeBuddy Code (npm install -g @tencent-ai/codebuddy-code) and sign in with `codebuddy`.": "CodeBuddy コードをインストールし (npm install -g @tencent-ai/codebuddy-code)、`codebuddy` でサインインします。",
-  "Install WorkBuddy from https://www.workbuddy.ai and sign in in the app.": "WorkBuddy を https://www.workbuddy.ai からインストールし、アプリでサインインします。",
+  "Install WorkBuddy from https://www.workbuddy.ai and sign in from Codync.": "WorkBuddy を https://www.workbuddy.ai からインストールし、Codync でサインインします。",
   "Install MiniMax Code (npm install -g @minimax-ai/code) and run `mcode login`.": "MiniMax コードをインストールし (npm install -g @minimax-ai/code)、`mcode login` を実行します。",
   "Install Junie (curl -fsSL https://junie.jetbrains.com/install.sh | bash) and sign in with `junie`.": "Junie をインストールし (curl -fsSL https://junie.jetbrains.com/install.sh | bash)、`junie` でサインインします。",
   "Install the Antigravity CLI (curl -fsSL https://antigravity.google/cli/install.sh | bash) and sign in with `agy`.": "Antigravity CLI (curl -fsSL https://antigravity.google/cli/install.sh | bash) をインストールし、`agy` でサインインします。",

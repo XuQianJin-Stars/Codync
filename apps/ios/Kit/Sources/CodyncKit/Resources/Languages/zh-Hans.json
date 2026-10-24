@@ -808,7 +808,7 @@
   "Install the Devin CLI (curl -fsSL https://cli.devin.ai/install.sh | bash) and run `devin auth login`.": "安装 Devin CLI（curl -fsSL https://cli.devin.ai/install.sh | bash），然后运行 `devin auth login`。",
   "Install Qoder CLI (curl -fsSL https://qoder.com/install | bash) and run `qodercli login`.": "安装 Qoder CLI（curl -fsSL https://qoder.com/install | bash），然后运行 `qodercli login`。",
   "Install CodeBuddy Code (npm install -g @tencent-ai/codebuddy-code) and sign in with `codebuddy`.": "安装 CodeBuddy Code（npm install -g @tencent-ai/codebuddy-code），然后用 `codebuddy` 登录。",
-  "Install WorkBuddy from https://www.workbuddy.ai and sign in in the app.": "从 https://www.workbuddy.ai 安装 WorkBuddy，然后在应用里登录。",
+  "Install WorkBuddy from https://www.workbuddy.ai and sign in from Codync.": "从 https://www.workbuddy.ai 安装 WorkBuddy，然后在 Codync 里登录。",
   "Install MiniMax Code (npm install -g @minimax-ai/code) and run `mcode login`.": "安装 MiniMax Code（npm install -g @minimax-ai/code），然后运行 `mcode login`。",
   "Install Junie (curl -fsSL https://junie.jetbrains.com/install.sh | bash) and sign in with `junie`.": "安装 Junie（curl -fsSL https://junie.jetbrains.com/install.sh | bash），然后用 `junie` 登录。",
   "Install the Antigravity CLI (curl -fsSL https://antigravity.google/cli/install.sh | bash) and sign in with `agy`.": "安装 Antigravity CLI（curl -fsSL https://antigravity.google/cli/install.sh | bash），然后用 `agy` 登录。",

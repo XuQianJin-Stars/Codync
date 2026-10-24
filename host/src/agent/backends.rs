@@ -373,7 +373,7 @@ pub const HARNESSES: &[Harness] = &[
         // `--serve` is what starts ACP. `--acp` selects the stdio transport.
         local: Some("{bin} --serve --acp"),
         registry: None,
-        setup: "Install WorkBuddy from https://www.workbuddy.ai and sign in in the app.",
+        setup: "Install WorkBuddy from https://www.workbuddy.ai and sign in from Codync.",
         install: None,
         login: None,
         signed_in: None,
