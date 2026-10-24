@@ -24,8 +24,20 @@ impl App {
         });
         let mut items: Vec<GotoItem> = bots.into_iter().map(|b| GotoItem::Bot(b.id.clone())).collect();
         if want.is_none() {
+            // First among the actions, so they show without scrolling past the long list.
+            let unhide = super::super::l10n::tr("Unhide");
+            let mut hidden: Vec<&Bot> =
+                self.bots.values().filter(|b| b.hidden && fuzzy(q, &[&b.name, "Unhide", unhide.as_ref()])).collect();
+            hidden.sort_by(|a, b| a.name.cmp(&b.name));
+            items.extend(hidden.into_iter().map(|b| GotoItem::Unhide(b.id.clone())));
             items.extend(
-                ACTIONS.iter().filter(|(label, _, _)| fuzzy(q, &[label])).map(|(_, _, a)| GotoItem::Action(*a)),
+                ACTIONS
+                    .iter()
+                    .filter(|(label, _, _)| {
+                        let translated = super::super::l10n::tr(label);
+                        fuzzy(q, &[label, translated.as_ref()])
+                    })
+                    .map(|(_, _, a)| GotoItem::Action(*a)),
             );
         }
         items
@@ -48,6 +60,10 @@ impl App {
                 Ok(()) => self.flash(&format!("Appearance: {}", mode.name())),
                 Err(error) => self.flash(&format!("Couldn't save appearance: {error}")),
             },
+            Action::Language => {
+                let title = super::super::l10n::cycle_language();
+                self.flash(title.as_ref());
+            }
             Action::Keys => self.overlays.push(Overlay::Help(Editor::default())),
         }
     }
@@ -151,6 +167,9 @@ impl App {
                         self.start_typing();
                     }
                     Some(GotoItem::Action(a)) => self.run_action(*a),
+                    Some(GotoItem::Unhide(id)) => {
+                        self.call("updateBot", json!({"id": id, "hidden": false}), After::Nothing);
+                    }
                     None => {}
                 }
                 return None;
@@ -226,5 +245,30 @@ impl App {
         if let Some(Overlay::Form(f)) = self.overlays.last_mut() {
             f.cwd = path;
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::super::{Bot, Editor, Goto, GotoItem, test_app};
+    use serde_json::json;
+
+    #[tokio::test]
+    async fn the_palette_offers_to_unhide_hidden_bots() {
+        let mut app = test_app();
+        for (id, hidden) in [("shown", false), ("hidden", true)] {
+            let bot = Bot::parse(&json!({"id": id, "name": id, "hidden": hidden})).expect("a bot with an id parses");
+            app.bots.insert(id.into(), bot);
+        }
+        let g = Goto { query: Editor::default(), filter: 0, cursor: 0 };
+        let unhide: Vec<String> = app
+            .goto_items(&g)
+            .into_iter()
+            .filter_map(|i| match i {
+                GotoItem::Unhide(id) => Some(id),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(unhide, ["hidden"]);
     }
 }

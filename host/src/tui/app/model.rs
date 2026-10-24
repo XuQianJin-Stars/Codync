@@ -83,6 +83,15 @@ impl Mark {
     }
 }
 
+/// The harness's own memory as the bot's Memory screen shows it.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum OwnMemory {
+    /// Codync can turn it off: kept on, or off.
+    Switch(bool),
+    /// One memory for all the harness's sessions that Codync can't turn off (`own_memory::shared`).
+    Shared,
+}
+
 #[derive(Clone, Debug)]
 #[allow(clippy::struct_excessive_bools, reason = "mirrors the host's bot JSON")]
 pub struct Bot {
@@ -114,8 +123,8 @@ pub struct Bot {
     /// The bot that created this one; `None` when the user did.
     pub created_by: Option<String>,
     pub created_at: i64,
-    /// The harness's own memory kept on beside Codync's; `None` where it has no switch.
-    pub harness_memory: Option<bool>,
+    /// The harness's own memory beside Codync's; `None` where the screen says nothing about it.
+    pub harness_memory: Option<OwnMemory>,
     /// Agents that carry on, in order, when its own can't answer (`agent::fallback`).
     pub fallbacks: Vec<crate::store::Fallback>,
     /// The bot may set its own fallbacks.
@@ -242,7 +251,10 @@ impl Bot {
             manage_team: v["manageTeam"].as_bool(),
             created_by: v["createdBy"].as_str().map(str::to_owned),
             created_at: v["createdAt"].as_i64().unwrap_or(0),
-            harness_memory: v["harnessMemory"].as_bool(),
+            harness_memory: v["harnessMemory"]
+                .as_bool()
+                .map(OwnMemory::Switch)
+                .or_else(|| (v["harnessMemoryShared"] == true).then_some(OwnMemory::Shared)),
             fallbacks: serde_json::from_value(v["fallbacks"].clone()).unwrap_or_default(),
             self_fallbacks: v["selfFallbacks"].as_bool().unwrap_or(true),
             agent_step: v["agentStep"]["agent"].as_str().map(str::to_owned),

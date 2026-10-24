@@ -92,7 +92,7 @@ struct AgentModelPicker: View {
     private var modelRow: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 8) {
-                Text("Model")
+                Text(L10n.tr("Model"))
                     .foregroundStyle(Palette.text)
                     .fixedSize()
                 Spacer(minLength: 0)
@@ -122,17 +122,17 @@ struct AgentModelPicker: View {
             }
             if backend != "custom", !loading {
                 if let failure {
-                    Text(failure)
+                    Text(L10n.tr(failure))
                         .font(.caption)
                         .foregroundStyle(Palette.warning)
                 } else if catalog?.models.isEmpty == true {
-                    Text("This agent doesn't advertise a model list. Leave Default or enter a model ID.")
+                    Text(L10n.tr("This agent doesn't advertise a model list. Leave Default or enter a model ID."))
                         .font(.caption)
                         .foregroundStyle(Palette.secondary)
                 }
             }
             if fastMode != nil {
-                Text("Changing the model starts a new agent session. Chat history is kept.")
+                Text(L10n.tr("Changing the model starts a new agent session. Chat history is kept."))
                     .font(.caption)
                     .foregroundStyle(Palette.secondary)
             }

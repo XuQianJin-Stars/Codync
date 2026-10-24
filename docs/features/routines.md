@@ -36,6 +36,11 @@ rest of Codync, with Reduce Motion support.
 Every agent receives the `routines` MCP server automatically; no marketplace
 installation is needed. Its tools are `list_routines`, `save_routine`,
 `set_routine_enabled`, `delete_routine`, `run_routine` and `routine_webhook`.
+They reach only the bot's own routines, so every bot test-runs its own with
+`run_routine`, also when another bot asks it to (such as a
+[team manager](bot-collaboration.md#team-management)). A bot never
+runs another bot's routine: `run_routine` with an id that isn't its own fails
+with a hint to ask that bot with `message_bot` instead.
 The same setup guidance is included in newly rendered agent context and MCP
 initialization instructions.
 
@@ -49,7 +54,8 @@ a schedule alone should not trigger an unsolicited test execution.
 
 A deterministic ACP fixture exercises the actual advertised MCP subprocess:
 initialize, discover all six tools, reject an invalid schedule, create, read,
-edit, pause/resume, fetch webhook credentials, delete, and execute a test run.
+edit, pause/resume, fetch webhook credentials, delete, refuse a routine that
+isn't the bot's, and execute a test run.
 This verifies tool wiring and persisted behavior; it does not guarantee how every
 provider model will interpret an ambiguous natural-language request.
 

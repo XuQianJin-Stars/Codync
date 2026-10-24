@@ -49,7 +49,7 @@ struct SettingsView: View {
                 Button {
                     addingComputer = true
                 } label: {
-                    Label("Pair a computer", systemImage: "qrcode.viewfinder")
+                    Label(L10n.tr("Pair a computer"), systemImage: "qrcode.viewfinder")
                         .foregroundStyle(Palette.text)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .contentShape(Rectangle())
@@ -63,7 +63,7 @@ struct SettingsView: View {
                     ForEach(online, id: \.computer.id) { store in
                         Button { voice = VoiceTarget(store: store) } label: {
                             LinkRow {
-                                Label(online.count > 1 ? "Voice chat on \(store.hostName)" : "Voice and API keys", systemImage: "waveform")
+                                Label(online.count > 1 ? "Voice chat on \(store.hostName)" : L10n.tr("Voice and API keys"), systemImage: "waveform")
                             }
                         }
                         .buttonStyle(.plain)
@@ -73,8 +73,10 @@ struct SettingsView: View {
 
             AppearanceSettings()
 
+            LanguageSettings()
+
             CardSection("Notifications", footer: "Get a result summary, a request for input, or a failure notice. Notification previews follow your iOS settings.") {
-                Toggle("Push notifications", isOn: $notificationsEnabled)
+                Toggle(isOn: $notificationsEnabled) { Text(L10n.tr("Push notifications")) }
                     .toggleStyle(.codync)
                     .onChange(of: notificationsEnabled) { _, on in
                         PushRegistrar.shared.resync()
@@ -85,11 +87,11 @@ struct SettingsView: View {
 
             CardSection(footer: "Which features you use, never your messages, code or files. Helps us spot bugs sooner and make Codync better for you.") {
                 HStack(spacing: 4) {
-                    Text("Share usage analytics").lineLimit(1).layoutPriority(1)
+                    Text(L10n.tr("Share usage analytics")).lineLimit(1).layoutPriority(1)
                     IconButton("About usage analytics", systemImage: "info.circle") { aboutAnalytics = true }
                     Toggle(isOn: Binding(get: { analyticsEnabled }, set: { Analytics.shared.setEnabled($0) })) { EmptyView() }
                         .toggleStyle(.codync)
-                        .accessibilityLabel("Share usage analytics")
+                        .accessibilityLabel(L10n.tr("Share usage analytics"))
                 }
             }
 
@@ -114,9 +116,11 @@ struct SettingsView: View {
 
             CardSection {
                 ValueRow("App version", value: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "")
-                Button("Source code") {
+                Button {
                     Analytics.shared.capture(.linkOpened(.github))
                     openURL(URL(string: "https://github.com/leepokai/Codync")!)
+                } label: {
+                    Text(L10n.tr("Source code"))
                 }
                     .buttonStyle(.plain)
                     .foregroundStyle(Palette.text)
@@ -124,7 +128,7 @@ struct SettingsView: View {
 
             CardSection {
                 Button { confirmStartOver = true } label: {
-                    Label("Start over", systemImage: "arrow.counterclockwise")
+                    Label(L10n.tr("Start over"), systemImage: "arrow.counterclockwise")
                         .foregroundStyle(Palette.danger)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .contentShape(Rectangle())
@@ -137,7 +141,7 @@ struct SettingsView: View {
             [DialogAction("Start over", destructive: true) { Task { await app.startOver() } }]
         }
         .refreshable { await accounts.refreshCloud() }
-        .page("Computers & settings", pushed: pushed)
+        .page("Computers & settings", pushed: pushed, icon: "gearshape")
         // One screen, named for the way in (as on Android): Accounts → settings, the Computers sheet → computers.
         .tracked(.screenViewed(pushed ? .settings : .computers))
         .task { await accounts.refreshCloud() }
@@ -149,7 +153,7 @@ struct SettingsView: View {
         .codyncSheet(item: $access) { target in
             AccessRequestView(computer: target.computer, pending: accounts.pendingAccess[target.id])
         }
-        .codyncDialog("Remove \(confirmForget?.name ?? "computer")?",
+        .codyncDialog(L10n.tr("Remove {name}?").replacingOccurrences(of: "{name}", with: confirmForget?.name ?? "computer"),
                       isPresented: Binding(get: { confirmForget != nil }, set: { if !$0 { confirmForget = nil } }),
                       message: "Its bots and conversations stay on that computer. You can pair again any time.") {
             [DialogAction("Remove", destructive: true) {
@@ -262,7 +266,7 @@ private struct ComputerRow: View {
                 if inAccount != nil {
                     Image(systemName: "person.crop.circle.badge.checkmark")
                         .foregroundStyle(Palette.tertiary)
-                        .accessibilityLabel("In your account")
+                        .accessibilityLabel(L10n.tr("In your account"))
                 }
             }
             if store.connection == .online {
@@ -326,7 +330,7 @@ private struct ComputerRow: View {
     }
 
     private var connectionDetail: some View {
-        Text(detail).font(.footnote)
+        Text(L10n.tr(detail)).font(.footnote)
             .foregroundStyle(store.isOffline ? Palette.warning : Palette.secondary)
             .fixedSize(horizontal: false, vertical: true)
     }
@@ -384,15 +388,15 @@ private struct AccountComputerRow: View {
                 .opacity(0.5)
             VStack(alignment: .leading, spacing: 2) {
                 Text(computer.name).font(.body.weight(.semibold)).foregroundStyle(Palette.text)
-                Text(detail).font(.subheadline).foregroundStyle(Palette.secondary).lineLimit(2)
+                Text(L10n.tr(detail)).font(.subheadline).foregroundStyle(Palette.secondary).lineLimit(2)
             }
             Spacer()
             if ticket != nil {
-                Button("Code", action: ask).buttonStyle(.secondary)
+                Button(L10n.tr("Code"), action: ask).buttonStyle(.secondary)
             } else if computer.isGranted {
-                Button("Revoke", role: .destructive, action: revoke).buttonStyle(.secondary)
+                Button(L10n.tr("Revoke"), role: .destructive, action: revoke).buttonStyle(.secondary)
             } else {
-                Button("Ask for access", action: ask).buttonStyle(.secondary)
+                Button(L10n.tr("Ask for access"), action: ask).buttonStyle(.secondary)
             }
         }
         .padding(.vertical, 2)
@@ -419,7 +423,7 @@ private struct OlderCopyRow: View {
                 .opacity(0.35)
             VStack(alignment: .leading, spacing: 2) {
                 Text(computer.name).font(.body.weight(.semibold)).foregroundStyle(Palette.secondary)
-                Text(detail).font(.subheadline).foregroundStyle(Palette.tertiary).lineLimit(2)
+                Text(L10n.tr(detail)).font(.subheadline).foregroundStyle(Palette.tertiary).lineLimit(2)
             }
             Spacer()
         }

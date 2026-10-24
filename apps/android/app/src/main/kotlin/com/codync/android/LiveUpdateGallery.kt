@@ -193,7 +193,7 @@ private val TaskPhase.mood get() = when (this) { TaskPhase.Working -> "working";
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             CharacterAvatar("blob", "green", 40.dp, phase.mood)
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text("Reviewer", style = Type.system(14f).semibold, color = Palette.text, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(tr("Reviewer"), style = Type.system(14f).semibold, color = Palette.text, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Caption(phase, started)
             }
             PhaseMark(phase, 20.dp)
@@ -214,7 +214,8 @@ private val TaskPhase.mood get() = when (this) { TaskPhase.Working -> "working";
 @Composable private fun ProgressLine(phase: TaskPhase) {
     val tint = phase.tint()
     val filled = when (phase) { TaskPhase.Sending, TaskPhase.Queued -> 1; TaskPhase.Working, TaskPhase.Stale -> 2; TaskPhase.NeedsInput -> 3; else -> 4 }
-    Canvas(Modifier.fillMaxWidth().height(6.dp).semantics { contentDescription = "Progress, step $filled of 4" }) {
+    val label = tr("Progress, step $filled of 4")
+    Canvas(Modifier.fillMaxWidth().height(6.dp).semantics { contentDescription = label }) {
         val gap = 3.dp.toPx(); val width = (size.width - gap * 3) / 4
         for (i in 0 until 4) drawRoundRect(if (i < filled) tint else tint.copy(alpha = 0.16f), Offset(i * (width + gap), 0f),
             Size(width, size.height), CornerRadius(size.height / 2))

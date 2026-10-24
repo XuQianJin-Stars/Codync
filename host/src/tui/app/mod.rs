@@ -16,7 +16,7 @@ mod ui;
 
 pub use editor::Editor;
 pub use exchange::{ConversationRow, Exchange, Item, Outcome, conversation, group, rows};
-pub use model::{After, AgentModel, Bot, Entry, Kind, Mark, ModelOption, Msg, Status};
+pub use model::{After, AgentModel, Bot, Entry, Kind, Mark, ModelOption, Msg, OwnMemory, Status};
 pub use slash::SlashAction;
 pub use ui::{
     ACTIONS, Action, COLORS, Click, Confirm, ConfirmAct, Dir, FIELDS, FILTERS, Field, Focus, FolderPicker, Form, Goto,
@@ -24,6 +24,7 @@ pub use ui::{
     Width,
 };
 
+use crate::tui::l10n::tr;
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::io::Write as _;
@@ -333,7 +334,7 @@ impl App {
     }
 
     pub fn flash(&mut self, s: &str) {
-        self.hint = Some((s.to_owned(), Instant::now() + Duration::from_secs(3)));
+        self.hint = Some((tr(s).into_owned(), Instant::now() + Duration::from_secs(3)));
     }
 
     fn toast(&mut self, text: String, need: bool) {

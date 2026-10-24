@@ -23,8 +23,8 @@ Codync/
 ├── apps/
 │   ├── project.yml            # XcodeGen source of truth for every Apple target
 │   ├── Codync.xcodeproj/      # Generated Xcode project
-│   ├── shared/Config/         # {dev,main}.plist: environment for the iPhone and desktop apps
-│   ├── ios/                   # App/, Views/, Resources/, Widgets/, NotificationService/
+│   ├── shared/Config/         # {dev,main}.plist: environment for the iPhone, Android and desktop apps
+│   ├── ios/                   # App/, Views/, Resources/, Widgets/, NotificationService/, WhatsNew.md (App Store notes)
 │   │   └── Kit/               # The iPhone app's Swift package
 │   │       ├── Sources/
 │   │       │   ├── CodyncKit/  # Wire models, transports, design; widget-safe
@@ -48,7 +48,7 @@ Codync/
 │   │   ├── src/preload/       # window.codync bridge
 │   │   ├── src/renderer/      # React UI: store/, components/, views/
 │   │   └── native/            # codync-speech (macOS on-device speech helper)
-│   ├── android/               # Android phone app (Kotlin, Compose), ported from the iPhone app
+│   ├── android/               # Android phone app (Kotlin, Compose), ported from the iPhone app; WhatsNew.md (Google Play notes)
 │   │   ├── core/              # JVM models, crypto, pairing, encrypted channel, host and cloud clients
 │   │   ├── design/            # Codync's components: palette, type, motion, glass, sheets, menus, dialogs, controls, symbols
 │   │   ├── app/               # Screens, the store (AppStore), notifications, Live updates, Glance widgets
@@ -62,7 +62,7 @@ Codync/
 ├── relay/                     # Separate APNs push Worker; src/ and test/
 ├── discord/                   # Discord GitHub-role Worker (discord.codync.dev)
 ├── docs/                      # Architecture, features, design, guides, reference, plans, investigations, archive
-├── tools/                     # Release, App Store submission and font scripts
+├── tools/                     # Release, App Store and Google Play submission (store_release.py: what both share), font scripts
 ├── packaging/                 # Distribution templates
 ├── marketing/app-store-screenshots/ # App Store screenshot editor (bun dev; Export bundle → out/)
 ├── web/                       # Website (Next.js static export)
@@ -95,7 +95,7 @@ Codync/
 | Prompt snapshots and memory | `host/src/chat/context.rs`, `memory/` (`api.rs` the apps' read-only view, `tools.rs` and `file_tools.rs` the MCP tools, `files.rs` the folders and scan, `turns.rs` which bot's turn a found change is credited to, `file_api.rs`, `dream.rs`, `import.rs`); the rules in `host/crates/memory` (`codync-mem`: files and facts in `files/`, dreaming in `dream/`, tombstones in `store.rs`, the old entries in `legacy.rs`); harnesses' own memory turned off in `host/src/agent/own_memory.rs` |
 | Identity, encryption and direct channel | `host/src/remote/identity.rs`, `crypto.rs`, `channel.rs` |
 | Host cloud state and relay connection | `host/src/remote/cloud.rs`, `relay.rs` |
-| Agent discovery, sign-in, setup terminal, Node.js for npm agents | `host/src/agent/backends.rs` (+ `backends/sign_in.rs`), `registry.rs`, `auth.rs`, `term.rs`, `node.rs` |
+| Agent discovery, sign-in, setup terminal, Node.js for npm agents | `host/src/agent/backends.rs` (+ `backends/sign_in.rs`, `backends/search_path.rs`), `registry.rs`, `auth.rs`, `term.rs`, `node.rs` |
 | Fast mode (session config option) | `host/src/agent/config.rs`, `agent/bot/fast_mode.rs` |
 | Marketplace, Composio, connector OAuth | `host/src/market/` |
 | Skills a bot writes (`save_skill`) | `host/src/chat/skills.rs`, stored by `host/src/market/skills.rs` |

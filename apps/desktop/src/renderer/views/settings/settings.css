@@ -49,7 +49,7 @@
   flex-direction: column;
 }
 .settings-title {
-  padding: 30px 32px 8px;
+  padding: 30px 56px 12px 32px;
 }
 .settings-page {
   flex: 1;

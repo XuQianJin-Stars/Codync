@@ -100,7 +100,7 @@ internal fun chatItems(entries: List<Entry>, pending: List<PendingSend>): List<C
 
 /** A chat's time separator: Today 3:27 AM. */
 @Composable internal fun TimeSeparator(at: Long) {
-    Text(RelativeTime.separator(at), Modifier.fillMaxWidth().padding(top = 18.dp, bottom = 6.dp), style = Type.footnote,
+    Text(RelativeTime.separator(at, tr("Today"), tr("Yesterday")), Modifier.fillMaxWidth().padding(top = 18.dp, bottom = 6.dp), style = Type.footnote,
         color = Palette.tertiary, textAlign = TextAlign.Center)
 }
 
@@ -364,7 +364,7 @@ internal val Entry.botReactions: Map<String, List<String>> get() =
             .padding(horizontal = 16.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             ThinkingOrb(if (needs) ThinkingOrbState.Listening else ThinkingOrbState.Working, 16.dp, if (needs) Palette.warning else Palette.secondary)
-            Text(bot.activity.ifEmpty { "Working…" }, Modifier.weight(1f, fill = false), style = Type.subheadline,
+            Text(tr(bot.activity.ifEmpty { "Working…" }), Modifier.weight(1f, fill = false), style = Type.subheadline,
                 color = if (needs) Palette.warning else Palette.secondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
             bot.startedAt?.let { Elapsed(it) }
         }
@@ -390,7 +390,8 @@ internal val Entry.botReactions: Map<String, List<String>> get() =
         val lines = if (bot.kind == "group") listOfNotNull(
             members.joinToString(" · ") { it.name }.takeIf { bot.name != members.joinToString(", ") { it.name } },
             bot.description.ifEmpty { null }) else listOfNotNull(
-            if (bot.managedWorkspace) "${backendName(state, bot.backend)} · Personal workspace" else "${backendName(state, bot.backend)} in ${bot.cwd}",
+            if (bot.managedWorkspace) "${backendName(state, bot.backend)} · ${tr("Personal workspace")}"
+            else tr("{agent} in {path}").replace("{agent}", backendName(state, bot.backend)).replace("{path}", bot.cwd),
             bot.description.ifEmpty { null })
         for (line in lines) Text(line, style = Type.subheadline, color = Palette.secondary, textAlign = TextAlign.Center)
         Text(if (bot.kind == "group") "Everyone answers in turn. @mention a bot to ask just that one."

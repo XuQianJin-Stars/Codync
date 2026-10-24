@@ -53,6 +53,8 @@ export interface Bot {
   sharedMemory: boolean
   /** Keeps the harness's own memory (Claude Code's…) on beside Codync's; null where it has no switch. */
   harnessMemory: boolean | null
+  /** The harness keeps one memory for all its sessions that Codync can't turn off (Hermes Agent, Gemini CLI): every bot on it shares it. */
+  harnessMemoryShared: boolean
   /** Moves whenever memory changes, so an open memory screen fetches it again. */
   memoryRev: number
   autoName: boolean
@@ -103,6 +105,7 @@ export function normalizeBot(raw: Partial<Bot> & { id: string }): Bot {
     createdBy: raw.createdBy ?? null,
     sharedMemory: raw.sharedMemory ?? raw.managedWorkspace ?? false,
     harnessMemory: raw.harnessMemory ?? null,
+    harnessMemoryShared: raw.harnessMemoryShared ?? false,
     memoryRev: raw.memoryRev ?? 0,
     autoName: raw.autoName ?? false,
     createdAt,

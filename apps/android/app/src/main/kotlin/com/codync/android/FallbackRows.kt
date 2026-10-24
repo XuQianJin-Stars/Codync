@@ -69,12 +69,12 @@ private fun fallbackChoices(state: AppState, own: String, list: List<Fallback>) 
     var about by remember { mutableStateOf(false) }
     Column(modifier.fillMaxWidth().animateContentSize(Motion.layoutSize), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("Fallbacks", style = Type.body, color = Palette.text)
+            Text(tr("Fallbacks"), style = Type.body, color = Palette.text)
             IconButton("About fallbacks", "info.circle") { about = true }
             Box(Modifier.weight(1f))
             if (list.size < MAX_FALLBACKS && fallbackChoices(state, own, list).isNotEmpty()) IconButton("Add fallback", "plus", action = addFallback)
         }
-        if (list.isEmpty()) Text("No fallbacks yet.", style = Type.subheadline, color = Palette.secondary)
+        if (list.isEmpty()) Text(tr("No fallbacks yet."), style = Type.subheadline, color = Palette.secondary)
         for ((index, fallback) in list.withIndex()) key(fallback.backend) {
             FallbackRow(state, index + 1, fallback, bot?.restOf(fallback.backend), bot?.agentStep?.agent == fallback.backend) { buildList {
                 if (index > 0) add(MenuItem("Move up", icon = "arrow.up") { change(list.moved(index, -1)) })
@@ -82,8 +82,8 @@ private fun fallbackChoices(state: AppState, own: String, list: List<Fallback>) 
                 add(MenuItem("Remove", icon = "trash", destructive = true) { change(list - fallback) })
             } }
         }
-        Text("If ${backendName(state, own)} runs out of usage or can't answer, the bot carries on with the next one. " +
-            "Chat, memory and workspace carry over.", style = Type.caption, color = Palette.secondary)
+        Text(tr("If {agent} runs out of usage or can't answer, the bot carries on with the next one. Chat, memory and workspace carry over.")
+            .replace("{agent}", backendName(state, own)), style = Type.caption, color = Palette.secondary)
     }
     CodyncDialog("Fallbacks", about, { about = false }, ABOUT_FALLBACKS, cancel = "OK") { emptyList() }
 }
@@ -95,7 +95,7 @@ private fun fallbackChoices(state: AppState, own: String, list: List<Fallback>) 
         AgentIcon(agentRegistry(state, fallback.backend), 22.dp)
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             // ponytail: the model's id, not its name: a name needs the agent's model list, an agent start per row.
-            Text("$name · ${fallback.model ?: "Default"}", style = Type.body, color = Palette.text, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text("${tr(name)} · ${tr(fallback.model ?: "Default")}", style = Type.body, color = Palette.text, maxLines = 1, overflow = TextOverflow.Ellipsis)
             if (rest != null) Text(rest.line(RelativeTime.clock(rest.until)), style = Type.caption, color = Palette.secondary)
         }
         if (inUse) Text("In use", Modifier.clip(Capsule()).background(Palette.accentFill).padding(horizontal = 8.dp, vertical = 3.dp),

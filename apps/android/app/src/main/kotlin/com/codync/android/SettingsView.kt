@@ -72,7 +72,7 @@ import kotlinx.serialization.json.put
     var aboutAnalytics by remember { mutableStateOf(false) }
     LaunchedEffect(state.contextId) { store.refreshCloud() }
     Column(Modifier.fillMaxSize().background(Palette.background)) {
-        PageHeader("Computers & settings", pop)
+        PageHeader("Computers & settings", pop, icon = "gearshape")
         PullToRefresh(store::refreshComputers, Modifier.weight(1f)) { CardForm {
             CardSection("Computers", if (signedIn) "Computers in your account need your OK on the computer before this phone can use them."
                 else "Each bot runs on its own computer. Sign in to see the computers in your account.") {
@@ -92,7 +92,7 @@ import kotlinx.serialization.json.put
                     Row(Modifier.fillMaxWidth().plainButton(action = pair), verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         Symbol("qrcode.viewfinder", size = 20.dp, tint = Palette.text)
-                        Text("Pair a computer", style = Type.body, color = Palette.text)
+                        Text(tr("Pair a computer"), style = Type.body, color = Palette.text)
                     }
                 }
             }
@@ -102,20 +102,34 @@ import kotlinx.serialization.json.put
                     Row(Modifier.fillMaxWidth().plainButton { voice = true }, verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         Symbol("waveform", size = 20.dp, tint = Palette.text)
-                        Text("Voice and API keys", Modifier.weight(1f), style = Type.body, color = Palette.text)
+                        Text(tr("Voice and API keys"), Modifier.weight(1f), style = Type.body, color = Palette.text)
                         Symbol("chevron.right", size = 13.dp, tint = Palette.tertiary)
+                    }
+                }
+            }
+            val appLanguage = LocalAppLanguage.current
+            val setAppLanguage = LocalSetAppLanguage.current
+            val systemChinese = LocalSystemChinese.current
+            val phrases = LocalPhrases.current
+            CardSection("Language", footer = "Choose the language for this device. Unsupported system languages use English.") {
+                row {
+                    ValueRow("App language") {
+                        ChoicePicker(appLanguage, AppLanguage.entries.map {
+                            it to AppLanguage.menuTitle(it, appLanguage, systemChinese, phrases)
+                        }, setAppLanguage)
                     }
                 }
             }
             NotificationsSection(state, store)
             CardSection(footer = "Which features you use, never your messages, code or files. Helps us spot bugs sooner and make Codync better for you.") {
                 row {
+                    val analyticsLabel = tr("Share usage analytics")
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text("Share usage analytics", style = Type.body, color = Palette.text, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(analyticsLabel, style = Type.body, color = Palette.text, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         IconButton("About usage analytics", "info.circle") { aboutAnalytics = true }
                         Box(Modifier.weight(1f))
                         CodyncSwitch(Analytics.enabled, Analytics::setEnabled, Modifier.width(34.dp)
-                            .semantics { contentDescription = "Share usage analytics" }) {}
+                            .semantics { contentDescription = analyticsLabel }) {}
                     }
                 }
             }
@@ -132,7 +146,7 @@ import kotlinx.serialization.json.put
                     Row(Modifier.fillMaxWidth().plainButton(enabled = "session" !in state.busy) { confirmStartOver = true },
                         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         Symbol("arrow.counterclockwise", size = 20.dp, tint = Palette.danger)
-                        Text("Start over", style = Type.body, color = Palette.danger)
+                        Text(tr("Start over"), style = Type.body, color = Palette.danger)
                     }
                 }
             }
@@ -145,7 +159,7 @@ import kotlinx.serialization.json.put
         "Signs out of every account and forgets every computer on this phone, then shows the welcome again. Your computers keep their bots and chats; pair again to use them.") {
         listOf(DialogAction("Start over", destructive = true, action = store::startOver))
     }
-    CodyncDialog("Remove ${paired?.name ?: "computer"}?", confirmForget, { confirmForget = false },
+    CodyncDialog(tr("Remove {name}?").replace("{name}", paired?.name ?: "computer"), confirmForget, { confirmForget = false },
         "Its bots and conversations stay on that computer. You can pair again any time.") {
         listOf(DialogAction("Remove", destructive = true, action = store::removeComputer))
     }

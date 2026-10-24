@@ -2,7 +2,8 @@
 //! its notes, its dream log, and Claude Code's own memory where the user kept it on. The user changes memory by
 //! telling the bot.
 
-use super::super::app::{App, Confirm, ConfirmAct, Overlay};
+use super::super::app::{App, Confirm, ConfirmAct, Overlay, OwnMemory};
+use super::super::l10n::tr;
 use super::s;
 use super::{Page, Reply, ctrl};
 use crossterm::event::{KeyCode, KeyEvent};
@@ -261,7 +262,7 @@ impl App {
     /// `m`: turns the harness's own memory off, or asks first, saying what it costs, before turning it on.
     fn harness_memory_key(&mut self, mut m: MemorySheet) -> Option<Overlay> {
         match self.bots.get(&m.bot).and_then(|b| b.harness_memory) {
-            Some(true) => {
+            Some(OwnMemory::Switch(true)) => {
                 m.busy = true;
                 self.sheet(
                     "updateBot",
@@ -269,10 +270,10 @@ impl App {
                     Reply::MemorySaved(m.bot.clone()),
                 );
             }
-            Some(false) => {
+            Some(OwnMemory::Switch(false)) => {
                 // One line each in the confirmation: the info sheets' points, short.
                 let c = Confirm {
-                    title: format!("Turn on {}'s own memory?", self.harness_name(&m.bot)),
+                    title: tr("Turn on {name}'s own memory?").replace("{name}", &self.harness_name(&m.bot)),
                     detail: "It may store things twice; the two memories can disagree.".into(),
                     note: "Forgetting something in Codync doesn't reach it.".into(),
                     button: "Turn on",
@@ -282,7 +283,7 @@ impl App {
                 self.overlays.push(Overlay::Confirm(c));
                 return None;
             }
-            None => {}
+            Some(OwnMemory::Shared) | None => {}
         }
         Some(Overlay::Memory(m))
     }
