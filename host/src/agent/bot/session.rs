@@ -148,6 +148,7 @@ impl Actor {
             let candidates = launch_commands(&self.cfg)?;
             // Keys saved from an "environment variable" sign-in.
             let mut env = crate::agent::auth::env(&self.hub.store, &self.cfg.backend)?;
+            crate::agent::backends::apply_process_env(&self.cfg.backend, &mut env);
             if self.cfg.backend == "codex" && !env.iter().any(|(k, _)| k == "CODEX_CONFIG") {
                 // Codex's `/compact` takes no instructions: the keep-list is its config's `compact_prompt`.
                 let config = json!({"compact_prompt": codync_mem::compaction::KEEP});

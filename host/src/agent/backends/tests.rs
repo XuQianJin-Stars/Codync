@@ -60,6 +60,27 @@ fn every_harness_is_unique() {
 }
 
 #[test]
+fn workbuddy_session_does_not_prove_sign_in() {
+    assert!(!session_proves_sign_in("workbuddy"));
+    assert!(session_proves_sign_in("codebuddy"));
+}
+
+#[test]
+fn workbuddy_starts_its_lite_bundle() {
+    let workbuddy = harness("workbuddy").unwrap();
+    assert_eq!(workbuddy.local, Some("{bin} --serve --acp"));
+    assert!(workbuddy.login.is_none());
+    let mut env = vec![("CODEBUDDY_FORCE_LITE_WB_BUNDLE".into(), "0".into())];
+    apply_process_env("workbuddy", &mut env);
+    assert_eq!(env, vec![("CODEBUDDY_FORCE_LITE_WB_BUNDLE".into(), "0".into())]);
+    env.clear();
+    apply_process_env("workbuddy", &mut env);
+    assert_eq!(env, vec![("CODEBUDDY_FORCE_LITE_WB_BUNDLE".into(), "1".into())]);
+    apply_process_env("codebuddy", &mut env);
+    assert_eq!(env.len(), 1);
+}
+
+#[test]
 fn workbuddy_cli_is_not_codebuddy_code() {
     let bundled = "/Applications/WorkBuddy.app/Contents/Resources/app.asar.unpacked/cli/bin/codebuddy";
     assert!(!belongs_to_other("workbuddy", bundled));

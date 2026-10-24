@@ -56,6 +56,17 @@ impl std::fmt::Display for RpcError {
 
 impl std::error::Error for RpcError {}
 
+/// A prompt that finished as `refusal` but whose meta is an authentication error. `WorkBuddy` answers
+/// that way (`_meta["codebuddy.ai/errorMessage"]`) instead of a JSON-RPC error.
+pub fn embedded_auth_error(result: &Value) -> Option<anyhow::Error> {
+    let raw = result.get("_meta")?.get("codebuddy.ai/errorMessage")?.as_str()?;
+    let parsed: Value = serde_json::from_str(raw).unwrap_or(Value::Null);
+    let message = parsed["data"]["details"].as_str().or_else(|| parsed["message"].as_str()).unwrap_or(raw).to_owned();
+    let code = parsed["code"].as_i64().unwrap_or(0);
+    let auth = code == AUTH_REQUIRED || parsed["data"]["category"] == "auth" || message.to_lowercase().contains("auth");
+    auth.then(|| RpcError { code: AUTH_REQUIRED, message, kind: Some("auth".into()) }.into())
+}
+
 /// Whether an agent's error asks for signing in: ACP's code, or adapters that only say so.
 pub fn needs_sign_in(e: &anyhow::Error) -> bool {
     let rpc = |c: &(dyn std::error::Error + 'static)| {
@@ -390,6 +401,16 @@ pub fn truncate(s: &str, max: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_refusal_that_hides_an_auth_error_asks_to_sign_in() {
+        let result = json!({"stopReason": "refusal", "_meta": {"codebuddy.ai/errorMessage":
+            "{\"code\":-32000,\"message\":\"Authentication required\",\"data\":{\"details\":\"Authentication required. Please use /login command to sign in to your account\",\"category\":\"auth\"}}"}});
+        let error = embedded_auth_error(&result).unwrap();
+        assert!(needs_sign_in(&error));
+        assert!(error.to_string().contains("sign in"));
+        assert!(embedded_auth_error(&json!({"stopReason": "refusal"})).is_none());
+    }
 
     #[test]
     fn content_text_flattens_blocks() {

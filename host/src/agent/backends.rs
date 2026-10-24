@@ -369,11 +369,12 @@ pub const HARNESSES: &[Harness] = &[
         name: "WorkBuddy",
         // Its CLI is also named `codebuddy`, inside the app. PATH lookup would take CodeBuddy Code's.
         bins: &[],
-        local: Some("{bin} --acp"),
+        // `--serve` is what starts ACP. `--acp` selects the stdio transport.
+        local: Some("{bin} --serve --acp"),
         registry: None,
         setup: "Install WorkBuddy from https://www.workbuddy.ai and sign in in the app.",
         install: None,
-        login: Some("{bin}"),
+        login: None,
         signed_in: None,
     },
     Harness {
@@ -507,6 +508,12 @@ pub fn list() -> Vec<Value> {
     out
 }
 
+/// A new session proves the agent is signed in. `WorkBuddy` opens one with no token and only fails
+/// the first prompt, so its session does not.
+pub fn session_proves_sign_in(id: &str) -> bool {
+    id != "workbuddy"
+}
+
 /// `program` is some other harness's CLI (not `backend`'s own).
 pub fn belongs_to_other(backend: &str, program: &str) -> bool {
     // WorkBuddy's CLI shares CodeBuddy Code's file name. The app path decides which one it is.
@@ -574,6 +581,17 @@ pub async fn login_command(id: &str) -> anyhow::Result<String> {
         },
     };
     Ok(login.replace("{bin}", &bin))
+}
+
+/// Environment the harness needs in addition to saved sign-in keys. A saved key wins.
+pub fn apply_process_env(id: &str, env: &mut Vec<(String, String)>) {
+    let extra: &[(&str, &str)] = if id == "workbuddy" { workbuddy::PROCESS_ENV } else { &[] };
+    for (key, value) in extra {
+        if env.iter().any(|(name, _)| name == key) {
+            continue;
+        }
+        env.push(((*key).to_owned(), (*value).to_owned()));
+    }
 }
 
 /// Where this harness's CLI is installed: on `PATH`, or inside the `WorkBuddy` app.

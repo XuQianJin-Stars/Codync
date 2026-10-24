@@ -240,7 +240,8 @@ async fn probe(store: &Store, backend: &str) -> Result<Status> {
     .await;
     acp.kill().await;
     let (signed_in, detail) = match res {
-        Ok(Ok(_)) => (Some(true), None),
+        // WorkBuddy opens a session before it has a token, so that success says nothing about sign-in.
+        Ok(Ok(_)) => (backends::session_proves_sign_in(backend).then_some(true), None),
         Ok(Err(e)) => match e.downcast_ref::<RpcError>() {
             Some(r) if r.code == AUTH_REQUIRED => (Some(false), Some(r.message.clone())),
             _ => (None, Some(format!("{e:#}"))),
@@ -301,7 +302,8 @@ async fn start(store: &Store, backend: &str) -> Result<Started> {
     if matches!(candidates.first(), Some(Candidate::Ready(_))) {
         candidates.truncate(1);
     }
-    let env = env(store, backend)?;
+    let mut env = env(store, backend)?;
+    backends::apply_process_env(backend, &mut env);
     let dir = probe_dir();
     tokio::fs::create_dir_all(&dir).await?;
     let mut last = None;
@@ -341,11 +343,9 @@ async fn start(store: &Store, backend: &str) -> Result<Started> {
         match tokio::time::timeout(budget, init).await {
             Ok(Ok(init)) => return Ok((acp, rx, init, cmd)),
             Ok(Err(e)) => {
-                // Its last stderr line usually says why it quit.
+                // A Node stack's last line is often just `}`, so prefer the error line.
                 let why = std::iter::from_fn(|| rx.try_recv().ok()).find_map(|inc| match inc {
-                    Incoming::Closed { stderr_tail } => {
-                        stderr_tail.lines().rev().find(|l| !l.trim().is_empty()).map(str::to_owned)
-                    }
+                    Incoming::Closed { stderr_tail } => stderr_reason(&stderr_tail),
                     _ => None,
                 });
                 last = Some(match why {
@@ -358,6 +358,17 @@ async fn start(store: &Store, backend: &str) -> Result<Started> {
         acp.kill().await;
     }
     Err(last.unwrap_or_else(|| anyhow!("couldn't start the agent")))
+}
+
+/// The line that says why the process quit. A pretty-printed Node error ends on `}`.
+fn stderr_reason(stderr_tail: &str) -> Option<String> {
+    let lines: Vec<&str> = stderr_tail.lines().map(str::trim).filter(|line| !line.is_empty()).collect();
+    lines
+        .iter()
+        .rev()
+        .find(|line| line.contains("Error"))
+        .or_else(|| lines.iter().rev().find(|line| !matches!(**line, "}" | "{" | "}," | "]" | "[")))
+        .map(|line| (*line).to_owned())
 }
 
 fn text(v: &Value) -> Option<String> {
@@ -435,12 +446,34 @@ pub fn terminal_command(backend: &str, method: &str) -> Option<String> {
     })
 }
 
-/// Lets the agent sign itself in (it usually opens a browser on this computer).
+/// Lets the agent sign itself in. `WorkBuddy` posts the page on `_codebuddy.ai/authUrl` and waits;
+/// this opens that page, since the headless CLI doesn't.
 pub async fn authenticate(store: &Store, backend: &str, method: &str) -> Result<Value> {
-    let (acp, _inbox, _, _) = start(store, backend).await?;
-    let res =
-        tokio::time::timeout(Duration::from_secs(10 * 60), acp.request("authenticate", json!({"methodId": method})))
-            .await;
+    let (acp, mut inbox, _, _) = start(store, backend).await?;
+    let request = acp.request("authenticate", json!({"methodId": method}));
+    tokio::pin!(request);
+    let mut opened = false;
+    let res = tokio::time::timeout(Duration::from_secs(10 * 60), async {
+        loop {
+            tokio::select! {
+                result = &mut request => break result,
+                incoming = inbox.recv() => match incoming {
+                    Some(Incoming::Notification { method, params }) if method == "_codebuddy.ai/authUrl" && !opened => {
+                        if let Some(url) = params["authUrl"].as_str() {
+                            opened = true;
+                            open_sign_in_url(url);
+                        }
+                    }
+                    Some(Incoming::Request { id, .. }) => {
+                        acp.respond_error(id, -32601, "not supported during sign-in").await?;
+                    }
+                    Some(Incoming::Closed { .. }) | None => bail!("the agent closed during sign-in"),
+                    _ => {}
+                }
+            }
+        }
+    })
+    .await;
     acp.kill().await;
     match res {
         Ok(r) => {
@@ -448,7 +481,37 @@ pub async fn authenticate(store: &Store, backend: &str, method: &str) -> Result<
         }
         Err(_) => bail!("Sign-in didn't finish within 10 minutes."),
     }
-    check(store, backend).await
+    let mut status = check(store, backend).await?;
+    // Completing `authenticate` is the proof for an agent whose session doesn't check the login.
+    if !backends::session_proves_sign_in(backend) {
+        backends::set_signed_in(backend, Some(true));
+        status["signedIn"] = true.into();
+    }
+    Ok(status)
+}
+
+/// Opens a sign-in page on this computer. Anything but an http(s) URL is ignored.
+fn open_sign_in_url(url: &str) {
+    if !(url.starts_with("https://") || url.starts_with("http://")) {
+        return;
+    }
+    let mut command = if cfg!(windows) {
+        let mut command = std::process::Command::new("rundll32");
+        command.arg("url.dll,FileProtocolHandler");
+        command
+    } else {
+        std::process::Command::new(if cfg!(target_os = "macos") { "open" } else { "xdg-open" })
+    };
+    if command
+        .arg(url)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .is_err()
+    {
+        tracing::warn!("couldn't open the sign-in page");
+    }
 }
 
 /// Saves the keys for an env-var method (empty values remove them), then re-checks.
@@ -470,6 +533,13 @@ pub async fn set_env(store: &Store, backend: &str, vars: &Map<String, Value>) ->
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn stderr_reason_skips_a_closing_brace() {
+        let tail = "Error: Cannot find module '../dist/codebuddy'\nRequire stack:\n- /cli/bin/codebuddy\n  code: 'MODULE_NOT_FOUND'\n}\n";
+        assert_eq!(stderr_reason(tail).as_deref(), Some("Error: Cannot find module '../dist/codebuddy'"));
+        assert_eq!(stderr_reason("agent said no\n").as_deref(), Some("agent said no"));
+    }
 
     #[test]
     fn model_catalog_reads_grouped_config_and_preserves_agent_ids() {

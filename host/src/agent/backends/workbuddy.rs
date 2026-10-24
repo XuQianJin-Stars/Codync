@@ -7,6 +7,10 @@ use std::path::{Path, PathBuf};
 const CLI_DIR_MAC: &str = "Contents/Resources/app.asar.unpacked/cli/bin";
 const CLI_DIR_OTHER: &str = "resources/app.asar.unpacked/cli/bin";
 
+/// The desktop app ships only `codebuddy-lite-wb.mjs`. `--acp` alone loads the
+/// headless bundle, which is not in the app, so the process exits immediately.
+pub(super) const PROCESS_ENV: &[(&str, &str)] = &[("CODEBUDDY_FORCE_LITE_WB_BUNDLE", "1")];
+
 /// The bundled CLI, when `WorkBuddy` is installed.
 pub(super) fn find() -> Option<PathBuf> {
     find_in(&install_roots())
