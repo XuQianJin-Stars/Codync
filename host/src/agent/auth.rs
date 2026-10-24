@@ -461,7 +461,7 @@ pub async fn authenticate(store: &Store, backend: &str, method: &str) -> Result<
                     Some(Incoming::Notification { method, params }) if method == "_codebuddy.ai/authUrl" && !opened => {
                         if let Some(url) = params["authUrl"].as_str() {
                             opened = true;
-                            open_sign_in_url(url);
+                            crate::agent::sign_in_page::open(url);
                         }
                     }
                     Some(Incoming::Request { id, .. }) => {
@@ -488,30 +488,6 @@ pub async fn authenticate(store: &Store, backend: &str, method: &str) -> Result<
         status["signedIn"] = true.into();
     }
     Ok(status)
-}
-
-/// Opens a sign-in page on this computer. Anything but an http(s) URL is ignored.
-fn open_sign_in_url(url: &str) {
-    if !(url.starts_with("https://") || url.starts_with("http://")) {
-        return;
-    }
-    let mut command = if cfg!(windows) {
-        let mut command = std::process::Command::new("rundll32");
-        command.arg("url.dll,FileProtocolHandler");
-        command
-    } else {
-        std::process::Command::new(if cfg!(target_os = "macos") { "open" } else { "xdg-open" })
-    };
-    if command
-        .arg(url)
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .spawn()
-        .is_err()
-    {
-        tracing::warn!("couldn't open the sign-in page");
-    }
 }
 
 /// Saves the keys for an env-var method (empty values remove them), then re-checks.

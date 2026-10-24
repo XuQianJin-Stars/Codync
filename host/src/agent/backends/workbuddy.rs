@@ -9,7 +9,26 @@ const CLI_DIR_OTHER: &str = "resources/app.asar.unpacked/cli/bin";
 
 /// The desktop app ships only `codebuddy-lite-wb.mjs`. `--acp` alone loads the
 /// headless bundle, which is not in the app, so the process exits immediately.
-pub(super) const PROCESS_ENV: &[(&str, &str)] = &[("CODEBUDDY_FORCE_LITE_WB_BUNDLE", "1")];
+const PROCESS_ENV: &[(&str, &str)] = &[("CODEBUDDY_FORCE_LITE_WB_BUNDLE", "1")];
+
+/// A new session proves the agent is signed in. `WorkBuddy` opens one with no token and only fails
+/// the first prompt, so its session does not.
+pub fn session_proves_sign_in(id: &str) -> bool {
+    id != "workbuddy"
+}
+
+/// Environment the harness needs in addition to saved sign-in keys. A saved key wins.
+pub fn apply_process_env(id: &str, env: &mut Vec<(String, String)>) {
+    if id != "workbuddy" {
+        return;
+    }
+    for (key, value) in PROCESS_ENV {
+        if env.iter().any(|(name, _)| name == key) {
+            continue;
+        }
+        env.push(((*key).to_owned(), (*value).to_owned()));
+    }
+}
 
 /// The bundled CLI, when `WorkBuddy` is installed.
 pub(super) fn find() -> Option<PathBuf> {

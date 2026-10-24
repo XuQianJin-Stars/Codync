@@ -20,6 +20,7 @@ mod workbuddy;
 pub use search_path::{hydrate_path, on_path, which};
 pub use sign_in::{SignInCheck, cli_signed_in, refresh_sign_in, set_signed_in, signed_in};
 use sign_in::{claude_signed_in, exit_ok, qoder_signed_in, says_logged_in};
+pub use workbuddy::{apply_process_env, session_proves_sign_in};
 
 pub struct Harness {
     pub id: &'static str,
@@ -508,12 +509,6 @@ pub fn list() -> Vec<Value> {
     out
 }
 
-/// A new session proves the agent is signed in. `WorkBuddy` opens one with no token and only fails
-/// the first prompt, so its session does not.
-pub fn session_proves_sign_in(id: &str) -> bool {
-    id != "workbuddy"
-}
-
 /// `program` is some other harness's CLI (not `backend`'s own).
 pub fn belongs_to_other(backend: &str, program: &str) -> bool {
     // WorkBuddy's CLI shares CodeBuddy Code's file name. The app path decides which one it is.
@@ -581,17 +576,6 @@ pub async fn login_command(id: &str) -> anyhow::Result<String> {
         },
     };
     Ok(login.replace("{bin}", &bin))
-}
-
-/// Environment the harness needs in addition to saved sign-in keys. A saved key wins.
-pub fn apply_process_env(id: &str, env: &mut Vec<(String, String)>) {
-    let extra: &[(&str, &str)] = if id == "workbuddy" { workbuddy::PROCESS_ENV } else { &[] };
-    for (key, value) in extra {
-        if env.iter().any(|(name, _)| name == key) {
-            continue;
-        }
-        env.push(((*key).to_owned(), (*value).to_owned()));
-    }
 }
 
 /// Where this harness's CLI is installed: on `PATH`, or inside the `WorkBuddy` app.
