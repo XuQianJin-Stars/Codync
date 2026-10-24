@@ -31,6 +31,7 @@ For these agents, Codync knows the command it looks for, how to install it and h
 | Devin | `devin` | `devin auth login` |
 | Qoder CLI | `qodercli` | `qodercli login` |
 | CodeBuddy Code | `codebuddy` or `cbc` | run `codebuddy` |
+| WorkBuddy | the CLI inside the WorkBuddy app | sign in in the WorkBuddy app |
 | MiniMax Code | `mcode` | `mcode login` |
 | Junie | `junie` | run `junie` |
 | Google Antigravity | `agy` | sign in from Codync with **Log in with Google** |
@@ -38,6 +39,8 @@ For these agents, Codync knows the command it looks for, how to install it and h
 | Poolside | `pool` | `pool login` |
 
 Signing in to Google Antigravity with `agy` in a terminal doesn't sign in the part Codync runs, so use the sign-in option in Codync's setup sheet for it.
+
+WorkBuddy is separate from CodeBuddy Code. Codync runs the CLI bundled in the WorkBuddy app with `--acp`: `WorkBuddy.app` on macOS, or the WorkBuddy install folder on Windows (`%LOCALAPPDATA%\Programs\WorkBuddy`). It does not install WorkBuddy, and there is no Linux build. Sign in in the WorkBuddy app first. A `codebuddy` command on your `PATH` stays CodeBuddy Code.
 
 Hermes Agent runs its own `hermes acp` mode, with the provider and model you pick in `hermes acp --setup`. On Windows, Codync also finds it in its install folders (`%LOCALAPPDATA%\hermes\bin`) without a `PATH` change. Hermes and Gemini CLI keep a memory of their own that every bot on them shares; see [Memory](/docs/memory#agents-with-a-memory-of-their-own).
 

@@ -44,6 +44,10 @@ Clicking a skill (an Extensions row, an installed skill, or the info button besi
 
 Registry-backed package connectors follow their upstream release. The host checks the Registry periodically after credentials are unlocked and checks again immediately before a package process starts. If a newer pinned npm, PyPI, OCI or NuGet reference is available, only that package/image argument is replaced; the running process is not interrupted, and the new version applies on its next launch. Network failures, missing packages and attempted downgrades leave the installed reference unchanged. Custom command connectors are never updated automatically.
 
+## WorkBuddy
+
+WorkBuddy is a built-in agent that runs the CLI bundled inside the WorkBuddy desktop app (`codebuddy --acp` under `WorkBuddy.app` on macOS, or `%LOCALAPPDATA%\Programs\WorkBuddy\resources` on Windows). That file is also named `codebuddy`, so Codync does not take it from `PATH`: a `codebuddy` command there stays [CodeBuddy Code](https://www.npmjs.com/package/@tencent-ai/codebuddy-code). There is no installer in Codync and no Linux build. Sign in in the WorkBuddy app, then refresh agents and select **WorkBuddy**. It honors `CODEBUDDY_DISABLE_AUTO_MEMORY`, so a bot can keep WorkBuddy's own memory on the same way as CodeBuddy Code.
+
 ## Hermes Agent
 
 Hermes Agent is a built-in agent that runs its installed CLI with `hermes acp`, without an ACP registry adapter. Install it using the [official installation guide](https://hermes-agent.nousresearch.com/docs/getting-started/installation), then run `hermes acp --setup` to choose a provider and model. In Codync, refresh the agents and select **Hermes Agent** when creating a bot; leave the custom command empty.

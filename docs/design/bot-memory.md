@@ -394,6 +394,7 @@ can, the user may keep it on for one bot ([Claude Code's own memory](#claude-cod
 | Copilot CLI | Copilot Memory, on for individual plans | `--excluded-tools=store_memory,vote_memory` |
 | Qwen Code | Auto memory and its own dreaming, on | `.qwen/settings.json` in a bot's own workspace: `memory.enableManagedAutoMemory` and `enableManagedAutoDream` false. Nothing in a project folder, whose files are the user's |
 | CodeBuddy | Auto memory | `CODEBUDDY_DISABLE_AUTO_MEMORY=1` |
+| WorkBuddy | The same auto memory, in the CLI bundled with the app | `CODEBUDDY_DISABLE_AUTO_MEMORY=1` |
 | Codex, Goose, Grok, oh-my-pi, Qoder, Cortex | Off unless the user turns it on | Nothing |
 | Gemini CLI | Its system prompt has the model edit `~/.gemini/GEMINI.md` | Nothing: no switch short of replacing its system prompt or its home folder |
 | Kilo Code | Memory tools, on per project | Nothing: the only per-process switch replaces the whole config |

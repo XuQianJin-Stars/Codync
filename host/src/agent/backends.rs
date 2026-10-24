@@ -16,6 +16,7 @@ use std::path::Path;
 
 mod search_path;
 mod sign_in;
+mod workbuddy;
 pub use search_path::{hydrate_path, on_path, which};
 pub use sign_in::{SignInCheck, cli_signed_in, refresh_sign_in, set_signed_in, signed_in};
 use sign_in::{claude_signed_in, exit_ok, qoder_signed_in, says_logged_in};
@@ -364,6 +365,18 @@ pub const HARNESSES: &[Harness] = &[
         signed_in: None,
     },
     Harness {
+        id: "workbuddy",
+        name: "WorkBuddy",
+        // Its CLI is also named `codebuddy`, inside the app. PATH lookup would take CodeBuddy Code's.
+        bins: &[],
+        local: Some("{bin} --acp"),
+        registry: None,
+        setup: "Install WorkBuddy from https://www.workbuddy.ai and sign in in the app.",
+        install: None,
+        login: Some("{bin}"),
+        signed_in: None,
+    },
+    Harness {
         id: "minimax",
         name: "MiniMax Code",
         bins: &["mcode"],
@@ -446,7 +459,7 @@ pub fn list() -> Vec<Value> {
     let mut out: Vec<Value> = HARNESSES
         .iter()
         .map(|h| {
-            let path = h.bins.iter().find_map(|b| which(b));
+            let path = installed_cli(h);
             let reg = h.registry.and_then(|id| registry.iter().find(|a| a["id"] == id));
             let native = path.is_some() && h.local.is_some();
             let runnable = native || reg.is_some_and(|a| registry::launch_kind(a).is_some());
@@ -496,6 +509,10 @@ pub fn list() -> Vec<Value> {
 
 /// `program` is some other harness's CLI (not `backend`'s own).
 pub fn belongs_to_other(backend: &str, program: &str) -> bool {
+    // WorkBuddy's CLI shares CodeBuddy Code's file name. The app path decides which one it is.
+    if workbuddy::is_cli(program) {
+        return backend != "workbuddy";
+    }
     let name = Path::new(program).file_name().and_then(|n| n.to_str()).unwrap_or(program);
     let own = |h: &Harness| h.id == backend || h.registry == Some(backend);
     HARNESSES.iter().any(|h| !own(h) && h.bins.contains(&name))
@@ -539,9 +556,7 @@ fn registry_cli(h: &Harness) -> Option<Value> {
 /// Codync's own sign-in command for `id` can run now.
 pub fn login_available(id: &str) -> bool {
     harness(id).is_some_and(|h| {
-        h.login.is_some_and(|login| {
-            h.bins.iter().any(|b| on_path(b)) || !login.contains("{bin}") || registry_cli(h).is_some()
-        })
+        h.login.is_some_and(|login| installed_cli(h).is_some() || !login.contains("{bin}") || registry_cli(h).is_some())
     })
 }
 
@@ -550,7 +565,7 @@ pub async fn login_command(id: &str) -> anyhow::Result<String> {
     let (h, login) = harness(id)
         .and_then(|h| h.login.map(|login| (h, login)))
         .ok_or_else(|| anyhow::anyhow!("no sign-in command for {id}"))?;
-    let bin = match h.bins.iter().find_map(|b| which(b)) {
+    let bin = match installed_cli(h) {
         Some(p) => shell::quote(&p.to_string_lossy()),
         None => match registry_cli(h) {
             Some(agent) => registry::command(&agent, |_| {}).await?.program,
@@ -561,11 +576,16 @@ pub async fn login_command(id: &str) -> anyhow::Result<String> {
     Ok(login.replace("{bin}", &bin))
 }
 
+/// Where this harness's CLI is installed: on `PATH`, or inside the `WorkBuddy` app.
+fn installed_cli(h: &Harness) -> Option<std::path::PathBuf> {
+    h.bins.iter().find_map(|b| which(b)).or_else(|| (h.id == "workbuddy").then(workbuddy::find).flatten())
+}
+
 /// The installed CLI's own ACP mode, if it has one and it's installed.
 fn local_candidate(id: &str) -> Option<registry::Cmd> {
     let h = harness(id)?;
     let template = h.local?;
-    let path = h.bins.iter().find_map(|b| which(b))?;
+    let path = installed_cli(h)?;
     let args = template.strip_prefix("{bin}").unwrap_or(template).trim().to_owned();
     Some(registry::Cmd { program: shell::quote(&path.to_string_lossy()), args })
 }

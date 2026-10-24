@@ -60,6 +60,14 @@ fn every_harness_is_unique() {
 }
 
 #[test]
+fn workbuddy_cli_is_not_codebuddy_code() {
+    let bundled = "/Applications/WorkBuddy.app/Contents/Resources/app.asar.unpacked/cli/bin/codebuddy";
+    assert!(!belongs_to_other("workbuddy", bundled));
+    assert!(belongs_to_other("codebuddy", bundled), "the app's CLI is WorkBuddy's, not CodeBuddy Code's");
+    assert!(belongs_to_other("workbuddy", "/opt/homebrew/bin/codebuddy"));
+}
+
+#[test]
 fn hermes_uses_native_acp() {
     let h = harness("hermes").unwrap();
     assert_eq!((h.local, h.registry, h.login), (Some("{bin} acp"), None, Some("{bin} acp --setup")));

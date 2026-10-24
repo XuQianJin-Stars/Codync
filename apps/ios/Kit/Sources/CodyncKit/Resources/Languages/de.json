@@ -808,6 +808,7 @@
   "Install the Devin CLI (curl -fsSL https://cli.devin.ai/install.sh | bash) and run `devin auth login`.": "Installiere the Devin CLI (curl -fsSL https://cli.devin.ai/install.sh | bash) und führe `devin auth login` aus.",
   "Install Qoder CLI (curl -fsSL https://qoder.com/install | bash) and run `qodercli login`.": "Installiere Qoder CLI (curl -fsSL https://qoder.com/install | bash) und führe `qodercli login` aus.",
   "Install CodeBuddy Code (npm install -g @tencent-ai/codebuddy-code) and sign in with `codebuddy`.": "Installiere CodeBuddy Code (npm install -g @tencent-ai/codebuddy-code) und melde dich mit `codebuddy` an.",
+  "Install WorkBuddy from https://www.workbuddy.ai and sign in in the app.": "Installiere WorkBuddy von https://www.workbuddy.ai und melde dich in der App an.",
   "Install MiniMax Code (npm install -g @minimax-ai/code) and run `mcode login`.": "Installiere MiniMax Code (npm install -g @minimax-ai/code) und führe `mcode login` aus.",
   "Install Junie (curl -fsSL https://junie.jetbrains.com/install.sh | bash) and sign in with `junie`.": "Installiere Junie (curl -fsSL https://junie.jetbrains.com/install.sh | bash) und melde dich mit `junie` an.",
   "Install the Antigravity CLI (curl -fsSL https://antigravity.google/cli/install.sh | bash) and sign in with `agy`.": "Installiere the Antigravity CLI (curl -fsSL https://antigravity.google/cli/install.sh | bash) und melde dich mit `agy` an.",

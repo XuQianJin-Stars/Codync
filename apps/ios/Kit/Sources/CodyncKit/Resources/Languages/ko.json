@@ -808,6 +808,7 @@
   "Install the Devin CLI (curl -fsSL https://cli.devin.ai/install.sh | bash) and run `devin auth login`.": "the Devin CLI (curl -fsSL https://cli.devin.ai/install.sh | bash)을 설치하고 `devin auth login`을 실행하세요.",
   "Install Qoder CLI (curl -fsSL https://qoder.com/install | bash) and run `qodercli login`.": "Qoder CLI (curl -fsSL https://qoder.com/install | bash)을 설치하고 `qodercli login`을 실행하세요.",
   "Install CodeBuddy Code (npm install -g @tencent-ai/codebuddy-code) and sign in with `codebuddy`.": "CodeBuddy Code (npm install -g @tencent-ai/codebuddy-code)을 설치하고 `codebuddy`으로 로그인하세요.",
+  "Install WorkBuddy from https://www.workbuddy.ai and sign in in the app.": "https://www.workbuddy.ai 에서 WorkBuddy를 설치하고 앱에서 로그인하세요.",
   "Install MiniMax Code (npm install -g @minimax-ai/code) and run `mcode login`.": "MiniMax Code (npm install -g @minimax-ai/code)을 설치하고 `mcode login`을 실행하세요.",
   "Install Junie (curl -fsSL https://junie.jetbrains.com/install.sh | bash) and sign in with `junie`.": "Junie (curl -fsSL https://junie.jetbrains.com/install.sh | bash)을 설치하고 `junie`으로 로그인하세요.",
   "Install the Antigravity CLI (curl -fsSL https://antigravity.google/cli/install.sh | bash) and sign in with `agy`.": "the Antigravity CLI (curl -fsSL https://antigravity.google/cli/install.sh | bash)을 설치하고 `agy`으로 로그인하세요.",
