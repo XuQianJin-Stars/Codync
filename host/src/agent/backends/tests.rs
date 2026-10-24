@@ -31,21 +31,24 @@ fn write_cli(dir: &Path, name: &str) {
 }
 
 #[test]
-fn an_installed_cli_is_started_without_a_second_copy() {
+fn an_installed_cli_comes_before_the_registry_build() {
     let dir = TempDir::new();
     for name in ["codebuddy", "mcode", "cursor-agent"] {
         write_cli(&dir.0, name);
     }
     let _path = TestSearchPath::set(dir.0.clone());
-    tokio::runtime::Builder::new_current_thread().build().expect("test runtime").block_on(async {
-        for (id, bin) in [("codebuddy", "codebuddy"), ("minimax", "mcode"), ("cursor", "cursor-agent")] {
-            let cmds = launch_candidates(id, |_| panic!("{id} is installed and should not be downloaded"))
-                .await
-                .expect("an installed CLI starts without a download");
-            assert_eq!(cmds.len(), 1, "{id}");
-            assert!(cmds[0].program.contains(bin), "{id}: {}", cmds[0].program);
-        }
-    });
+    let builds = ["codebuddy-code", "minimax-code", "cursor"].map(|id| json!({"id": id}));
+    registry::set_cache(Some(json!({"agents": builds})));
+    let found = [("codebuddy", "codebuddy"), ("minimax", "mcode"), ("cursor", "cursor-agent")]
+        .map(|(id, bin)| (id, bin, launch_candidates(id)));
+    registry::set_cache(None);
+    for (id, bin, candidates) in found {
+        let candidates = candidates.expect("an installed CLI can start");
+        assert!(
+            matches!(&candidates[..], [registry::Candidate::Ready(cmd), registry::Candidate::Build(_)] if cmd.program.contains(bin)),
+            "{id}: the installed CLI first, the registry build kept for a CLI too old for ACP"
+        );
+    }
 }
 
 #[test]

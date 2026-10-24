@@ -3,6 +3,7 @@
 
 use super::{Adapter, Conn, SessionCaps};
 use crate::agent::acp::{self, Acp};
+use crate::agent::registry::{Candidate, Cmd};
 use crate::store::BotConfig;
 use anyhow::Result;
 use serde_json::{Value, json};
@@ -35,16 +36,11 @@ fn claude_options(cfg: &BotConfig) -> Value {
     json!({"options": {"settings": settings}})
 }
 
-/// Shell commands that may start the bot's agent over ACP, best first.
-/// `progress` receives short status lines ("Downloading Cursor…").
-pub(crate) async fn launch_commands(cfg: &BotConfig, progress: impl Fn(&str)) -> Result<Vec<String>> {
+/// Ways to start the bot's agent over ACP, best first: its own command, else its backend's.
+pub(crate) fn launch_commands(cfg: &BotConfig) -> Result<Vec<Candidate>> {
     Ok(match cfg.command.as_deref().map(str::trim) {
-        Some(c) if !c.is_empty() => vec![c.to_owned()],
-        _ => crate::agent::backends::launch_candidates(&cfg.backend, progress)
-            .await?
-            .iter()
-            .map(crate::agent::registry::Cmd::acp)
-            .collect(),
+        Some(c) if !c.is_empty() => vec![Candidate::Ready(Cmd { program: c.to_owned(), args: String::new() })],
+        _ => crate::agent::backends::launch_candidates(&cfg.backend)?,
     })
 }
 
