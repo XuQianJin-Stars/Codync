@@ -98,13 +98,47 @@ pub async fn browse_connectors(store: &crate::store::Store, search: &str, cursor
     let search = search.trim();
     let (servers, next) =
         if search.is_empty() && cursor.is_empty() { first_page().await? } else { later_page(search, cursor).await? };
+    let (items, next) = past_empty_pages((listings(&servers, &installed), next), cursor, |after| {
+        let installed = &installed;
+        async move {
+            let (servers, next) = later_page(search, &after).await?;
+            Ok((listings(&servers, installed), next))
+        }
+    })
+    .await?;
+    Ok(json!({"items": items, "nextCursor": next}))
+}
+
+/// The servers on a page that Codync can install, each once.
+fn listings(servers: &[Value], installed: &[Connector]) -> Vec<Value> {
     let mut seen = std::collections::HashSet::new();
-    let items: Vec<Value> = servers
+    servers
         .iter()
         .filter(|s| seen.insert(s["name"].as_str().unwrap_or_default().to_owned()))
-        .filter_map(|s| listing(s, &installed))
-        .collect();
-    Ok(json!({"items": items, "nextCursor": following(cursor, next)}))
+        .filter_map(|s| listing(s, installed))
+        .collect()
+}
+
+/// Registry pages read past one with nothing Codync can install. An empty answer reads as the end
+/// of the list in every app, so a few more pages are tried while the cursor goes on.
+const EMPTY_PAGE_SKIPS: usize = 3;
+
+async fn past_empty_pages<F, Fut>(page: Page, cursor: &str, mut fetch: F) -> Result<Page>
+where
+    F: FnMut(String) -> Fut,
+    Fut: Future<Output = Result<Page>>,
+{
+    let (mut items, mut next) = page;
+    let mut asked = cursor.to_owned();
+    for _ in 0..EMPTY_PAGE_SKIPS {
+        if !items.is_empty() {
+            break;
+        }
+        let Some(after) = following(&asked, next.take()) else { break };
+        (items, next) = fetch(after.clone()).await?;
+        asked = after;
+    }
+    Ok((items, following(&asked, next)))
 }
 
 /// The registry handing back the cursor it was asked with would page the same rows forever: that ends the list.
@@ -184,6 +218,24 @@ mod tests {
         assert_eq!(title_from_name("com.notion/mcp"), "Notion");
         assert_eq!(title_from_name("com.vercel/vercel-mcp"), "Vercel");
         assert_eq!(title_from_name("io.github.microsoft/playwright-mcp"), "Playwright");
+    }
+
+    #[tokio::test]
+    async fn an_empty_page_with_a_cursor_reads_on() {
+        let pages = |cursor: String| async move {
+            Ok(match cursor.as_str() {
+                "b" => (vec![], Some("c".to_owned())),
+                "c" => (vec![json!({"name": "found"})], Some("d".to_owned())),
+                _ => (vec![], Some(cursor)),
+            })
+        };
+        let (items, next) = past_empty_pages((vec![], Some("b".into())), "", pages).await.unwrap();
+        assert_eq!(items.len(), 1);
+        assert_eq!(next.as_deref(), Some("d"));
+        let (items, next) = past_empty_pages((vec![], Some("x".into())), "", pages).await.unwrap();
+        assert!(items.is_empty() && next.is_none(), "a cursor the registry repeats still ends the list");
+        let (items, next) = past_empty_pages((vec![json!({})], Some("b".into())), "", pages).await.unwrap();
+        assert_eq!((items.len(), next.as_deref()), (1, Some("b")), "a page with rows is kept as it is");
     }
 
     #[test]
