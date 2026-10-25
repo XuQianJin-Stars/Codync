@@ -11,6 +11,5 @@ pub mod new_bot;
 pub mod node;
 pub mod own_memory;
 pub mod registry;
-pub mod sign_in_page;
 pub mod term;
 pub mod workspace;

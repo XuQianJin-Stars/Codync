@@ -500,7 +500,7 @@ The user can keep it on per bot, for example to share the auto-memory directory 
 sessions in the terminal. The switch sits on the memory screen with an info button on what it costs: the bot may
 remember things twice, the two memories can disagree, and forgetting something in Codync doesn't reach Claude
 Code's notes. Codync then shows the folder's `MEMORY.md` read-only, so it isn't unseen. The same switch covers
-Copilot, CodeBuddy and (in a bot's own workspace) Qwen Code. Using it instead of Codync's memory is planned:
+Copilot, CodeBuddy, WorkBuddy and (in a bot's own workspace) Qwen Code. Using it instead of Codync's memory is planned:
 [harness memory](../plans/harness-memory.md).
 
 The adapter passes `claudeCode.options.settings` and `.env` through untouched, so these settings reach the SDK.

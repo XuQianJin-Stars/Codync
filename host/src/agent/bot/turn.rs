@@ -228,18 +228,9 @@ impl Actor {
         }
         let done_tx = done_tx.clone();
         tokio::spawn(async move {
-            let _ = done_tx.send(answer.response().await);
+            let _ = done_tx.send(answer.response().await.and_then(acp::codebuddy::prompt_result));
         });
         Ok(())
-    }
-
-    /// `WorkBuddy` hides "not signed in" as a refusal. The sign-in card sends the message again.
-    fn refusal_needs_sign_in(&self, done: &Done) -> bool {
-        let Some(error) = done.as_ref().ok().and_then(acp::embedded_auth_error) else { return false };
-        if !self.invite_sign_in(&error) {
-            self.notice(&error.to_string(), NoticeStyle::Info);
-        }
-        true
     }
 
     pub(super) fn finish_turn(&mut self, done: &Done) {
@@ -302,7 +293,6 @@ impl Actor {
             (_, "cancelled") | (Err(_), _) => self.notice("Stopped.", NoticeStyle::Info),
             (_, "max_tokens") => self.notice("The agent hit its output limit.", NoticeStyle::Info),
             (_, "max_turn_requests") => self.notice("The agent hit its step limit for this turn.", NoticeStyle::Info),
-            (_, "refusal") if !self.stop_requested && self.refusal_needs_sign_in(done) => {}
             (_, "refusal") => self.notice("The agent declined to continue.", NoticeStyle::Info),
             (Ok(_), "end_turn") if !stopped => crate::market::agent_sign_in::answered(&self.hub, &self.cfg.backend),
             _ => {}

@@ -334,17 +334,5 @@ impl App {
 /// Opens `url` in this computer's browser, when the host is this computer.
 pub(super) fn open_browser(url: &str, host: &str) -> bool {
     let local = ["//127.0.0.1", "//localhost", "//[::1]"].iter().any(|h| host.contains(h));
-    local && !url.is_empty() && open_here(std::ffi::OsStr::new(url))
-}
-
-/// Opens a link or file with this computer's default app for it (a web page: the browser).
-pub(in crate::tui) fn open_here(target: &std::ffi::OsStr) -> bool {
-    let mut command = if cfg!(windows) {
-        let mut c = std::process::Command::new("rundll32");
-        c.arg("url.dll,FileProtocolHandler");
-        c
-    } else {
-        std::process::Command::new(if cfg!(target_os = "macos") { "open" } else { "xdg-open" })
-    };
-    command.arg(target).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).spawn().is_ok()
+    local && !url.is_empty() && crate::shell::open(std::ffi::OsStr::new(url))
 }

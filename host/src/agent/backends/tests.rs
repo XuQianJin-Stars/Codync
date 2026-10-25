@@ -89,6 +89,18 @@ fn workbuddy_cli_is_not_codebuddy_code() {
 }
 
 #[test]
+fn a_codebuddy_on_path_is_not_workbuddy() {
+    let dir = TempDir::new();
+    write_cli(&dir.0, "codebuddy");
+    let _path = TestSearchPath::set(dir.0.clone());
+    let on_path = dir.0.to_string_lossy().into_owned();
+    let from_path =
+        |c: &registry::Candidate| matches!(c, registry::Candidate::Ready(cmd) if cmd.program.contains(&on_path));
+    assert!(launch_candidates("codebuddy").unwrap().iter().any(from_path), "CodeBuddy Code's own CLI");
+    assert!(!launch_candidates("workbuddy").is_ok_and(|c| c.iter().any(from_path)), "never WorkBuddy's");
+}
+
+#[test]
 fn hermes_uses_native_acp() {
     let h = harness("hermes").unwrap();
     assert_eq!((h.local, h.registry, h.login), (Some("{bin} acp"), None, Some("{bin} acp --setup")));
