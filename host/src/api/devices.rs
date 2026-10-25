@@ -32,7 +32,6 @@ impl Caller {
 const LOCAL_ONLY: &[&str] = &[
     "hostUpdateStatus",
     "checkHostUpdate",
-    "installHostUpdate",
     "setHostAutomaticUpdates",
     "setScreenEnabled",
     "requestScreenPermission",
@@ -240,6 +239,7 @@ mod tests {
         assert!(permit(&control, "screenPrepare").is_err());
         assert!(permit(&control, "screenOffer").is_err(), "screen needs the screen scope");
         assert!(permit(&control, "screenStatus").is_ok(), "status is control");
+        assert!(permit(&control, "installHostUpdate").is_ok(), "a phone can update a computer that's behind");
         assert!(permit(&Caller::Device { key: "k".into(), scopes: vec![] }, "hello").is_err());
         assert!(permit(&both, "pair").is_err(), "pair only on a pairing channel");
         assert!(permit(&Caller::Pairing { key: "k".into() }, "hello").is_err());

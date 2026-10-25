@@ -9,6 +9,8 @@ const DROP_GRACE = 5000
 const INITIAL_GRACE = 1000
 const ACTION_PATIENCE = 20_000
 const MISMATCH_RECHECK = 30_000
+/** The mismatch recheck while an update asked from here runs, so the notice leaves soon after. */
+const UPDATE_RECHECK = 5_000
 
 export const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 const same = (a: Connection, b: Connection) => a.kind === b.kind && JSON.stringify(a) === JSON.stringify(b)
@@ -122,7 +124,7 @@ export class BotSync extends BotMirror {
         if (!alive()) return
         if (this.mismatch) {
           this.setConnection({ kind: 'online' })
-          await sleep(MISMATCH_RECHECK)
+          await sleep(this.hostUpdateOffer.kind === 'updating' ? UPDATE_RECHECK : MISMATCH_RECHECK)
           return void attempt()
         }
         if (this.isLoopback) {
@@ -187,6 +189,7 @@ export class BotSync extends BotMirror {
       this.refetchAll()
       this.rewound = false
       this.unreadable = false
+      this.hostUpdate = null
     }
     this.cacheStamp = null
     this.hostVersion = next

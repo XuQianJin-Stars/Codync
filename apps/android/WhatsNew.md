@@ -11,15 +11,15 @@ else a generic "Bug fixes and improvements" line. Delete old sections.
 
 ### zh-Hant
 - Bot 傳來的圖片會直接顯示在聊天裡，點一下可以放大看，不用先下載。
+- 電腦上的 Codync 版本太舊時，更新提示多了「Update now」按鈕，直接從手機叫那台電腦更新。
 - 擴充套件一次顯示一個分類：智慧體、聯結器或技能，每個列表都分頁。點列表兩側的圓形按鈕或左右滑動翻頁，每頁可選 6、10、20 或 50 筆。
-- 聯結器翻到還沒載入的頁面時，會從 MCP Registry 接著載入。
 - 「憑證」移到上方電腦名稱旁；「自定義聯結器」和「自己的技能」放在各自列表上方。
 
 ### en-US
 - Images a bot sends now show right in the chat; tap one to see it full size, no download needed.
-- Extensions shows one section at a time: Agents, Connectors or Skills, each in pages. Tap the round buttons beside the list or swipe to turn the page, with 6, 10, 20 or 50 per page.
-- Connectors keep loading from the MCP Registry as you page past what's loaded.
-- Credentials sits beside the computer's name, and Custom connector and Your own skill sit above their lists.
+- When a computer's Codync is too old for this app, Update now on the notice updates that computer from your phone.
+- Extensions shows Agents, Connectors or Skills one at a time, in pages: tap the round buttons beside the list or swipe, with 6, 10, 20 or 50 per page.
+- Credentials sits beside the computer's name; Custom connector and Your own skill top their lists.
 
 ## 2.26.0
 

@@ -16,7 +16,7 @@ extension BotStore {
                     // Reached, but nothing to sync until one side updates. A host update restarts
                     // the link (and this loop) anyway; this catches one that doesn't.
                     setConnection(.online)
-                    try await Task.sleep(for: Self.mismatchRecheck)
+                    try await Task.sleep(for: hostUpdateOffer() == .updating ? Self.updatingRecheck : Self.mismatchRecheck)
                     continue
                 }
                 requestedSince = rev
@@ -70,6 +70,7 @@ extension BotStore {
             refetchAll()
             rewound = false
             unreadable = false
+            hostUpdate = nil
         }
         cacheStamp = nil
         // An update notice may appear or go away with it.

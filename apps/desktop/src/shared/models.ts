@@ -463,6 +463,8 @@ export interface Hello {
   signKey?: string
   boxKey?: string
   minApp?: string
+  /** `installHostUpdate` can update this computer (absent before hosts could be updated from a client). */
+  canUpdate?: boolean
   cloud?: string | null
   /** Product analytics on this computer: on unless its owner turned it off. */
   analytics?: boolean

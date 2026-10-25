@@ -137,6 +137,11 @@ public struct HostClient: Sendable {
 public extension HostClient {
     func hello() async throws -> Hello { try await call("hello") }
 
+    /// Updates a computer that's behind this app to the latest release (`Hello.canUpdate`).
+    func installHostUpdate() async throws {
+        let _: Empty = try await call("installHostUpdate")
+    }
+
     func history(botId: String, beforeSeq: Int64, limit: Int = 100) async throws -> [Entry] {
         struct Body: Encodable { var botId: String; var beforeSeq: Int64; var limit: Int }
         struct Res: Decodable { var entries: [Entry] }

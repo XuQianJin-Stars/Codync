@@ -29,7 +29,8 @@ Updates page and the update-needed card): **Check for updates** → **Update to 
 → **Downloading… N%** (the Updates page adds a progress bar) → **Restart to update** →
 **Restarting…**. A check the person starts that finds nothing opens a **You're up to date**
 dialog in the chat window (scheduled checks stay silent). A finished download never quits the app on its own; the person restarts,
-or it installs once idle. While a release is available, a filled arrow badge sits right
+or it installs once idle (once no bot is working, when another device chose **Update now** for
+this computer). While a release is available, a filled arrow badge sits right
 of **Extensions** in the sidebar footer (under the
 Extensions icon in the collapsed rail), its tooltip the same action label; one click
 restarts into the release, downloading it first if needed (a ring fills with the download

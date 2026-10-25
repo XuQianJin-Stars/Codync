@@ -221,15 +221,19 @@ private suspend fun AppStore.decode(event: JsonObject): MirrorEvent? {
     }
 }
 
-/** Reached, but nothing to sync until one side updates: ask again every 30 s (a host update restarts the link anyway). */
+/**
+ * Reached, but nothing to sync until one side updates: ask again every 30 s (a host update restarts
+ * the link anyway), every 5 s while an update this phone asked for runs, so the card goes soon.
+ */
 private suspend fun AppStore.awaitUpdate(active: EncryptedChannel) {
-    delay(30_000)
+    delay(if (state.value.hostUpdate.updating(System.currentTimeMillis())) 5_000 else 30_000)
     noteHello(active.call("hello").jsonObject)
 }
 
-/** A different host version may read fine: forget that its data was unreadable (iOS `noteHostVersion`). */
+/** A different host version may read fine: forget that its data was unreadable and any update asked of the old one (iOS `noteHostVersion`). */
 private fun AppStore.noteHello(hello: JsonObject) = mutableState.update {
-    it.copy(hello = hello, unreadable = it.unreadable && it.hello?.text("version") == hello.text("version"))
+    val same = it.hello?.text("version") == hello.text("version")
+    it.copy(hello = hello, unreadable = it.unreadable && same, hostUpdate = it.hostUpdate.takeIf { same })
 }
 
 private fun AppStore.showConnection(link: LinkState) {
