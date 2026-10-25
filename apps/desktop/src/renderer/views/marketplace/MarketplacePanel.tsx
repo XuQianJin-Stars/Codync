@@ -63,8 +63,8 @@ export function MarketPanel({
       {section === 'agents' && needsNode ? <NodeNotice onAdd={onAddNode} /> : null}
       {section === 'connectors' ? (
         <MarketRow
-          title="Custom connector"
-          subtitle="Any MCP server: a command or a URL"
+          title={tr('Custom connector')}
+          subtitle={tr('Any MCP server: a command or a URL')}
           added={false}
           addLabel="New"
           icon={<TileIcon name="point.3.connected.trianglepath.dotted" />}
@@ -73,8 +73,8 @@ export function MarketPanel({
       ) : null}
       {section === 'skills' ? (
         <MarketRow
-          title="Your own skill"
-          subtitle="Write instructions a bot can follow"
+          title={tr('Your own skill')}
+          subtitle={tr('Write instructions a bot can follow')}
           added={false}
           addLabel="New"
           icon={<TileIcon name="square.and.pencil" />}
