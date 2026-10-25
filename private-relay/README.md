@@ -12,9 +12,12 @@ Node.js 22 or newer. The process listens on `127.0.0.1` only. Put TLS and the pu
 cd private-relay
 npm ci
 export CODYNC_PRIVATE_RELAY_DATA=/var/lib/codync-private-relay
+export CODYNC_PRIVATE_RELAY_TOKEN='a long random secret'
 export PORT=8788
 npm start
 ```
+
+`CODYNC_PRIVATE_RELAY_TOKEN` is required: at least 16 visible ASCII characters. A computer this relay does not already know can register only by presenting that token. Without it, anyone who can reach the relay could create a computer and hold a room. The process refuses to start when the token is missing or too short. At most 32 computers are stored. One that is already registered can refresh its row and reconnect with its own key, without the token.
 
 The database is `$CODYNC_PRIVATE_RELAY_DATA/relay.sqlite` (mode `0600` on Unix). When `CODYNC_PRIVATE_RELAY_DATA` is unset it uses `/var/lib/codync-private-relay`.
 
@@ -35,6 +38,7 @@ User=codync-relay
 Group=codync-relay
 Environment=PORT=8788
 Environment=CODYNC_PRIVATE_RELAY_DATA=/var/lib/codync-private-relay
+Environment=CODYNC_PRIVATE_RELAY_TOKEN=a-long-random-secret
 ExecStart=/usr/bin/node --experimental-strip-types /opt/codync-private-relay/src/index.ts
 Restart=always
 RestartSec=2
@@ -80,12 +84,14 @@ Open TCP 443 to the internet. Leave 8788 on loopback.
 
 ## Point a computer at it
 
-On the computer (not on the VPS), in Codync's Computers settings, turn on Reach from anywhere and set the relay address to `https://relay.example.com`. Or:
+On the computer (not on the VPS), in Codync's Computers settings, turn on Reach from anywhere and set the relay address to `https://<token>@relay.example.com`, using the same value as `CODYNC_PRIVATE_RELAY_TOKEN`. The host stores the token on that computer and publishes only `https://relay.example.com`. Or:
 
 ```bash
-codync-host cloud --url https://relay.example.com
+codync-host cloud --url https://<token>@relay.example.com
 ```
 
-`--clear-url` forgets the saved address and uses this build's Codync cloud again. Each computer keeps its own `identity.json`. Do not copy that file to a second machine; register the second machine on its own. Both can use this same relay. They are separate rooms.
+`--clear-url` forgets the saved address and the token, and uses this build's Codync cloud again. Clearing the Relay address field does the same. Each computer keeps its own `identity.json`. Do not copy that file to a second machine; register the second machine on its own, with the token. Both can use this same relay. They are separate rooms.
+
+Accounts, public routine webhooks and remote screen through the relay are not served (`404`). Direct Wi-Fi and Tailscale screen still work. Push stays on the existing notification worker.
 
 Phones learn the address from the pairing code and from the next `hello`. They do not have their own address field.

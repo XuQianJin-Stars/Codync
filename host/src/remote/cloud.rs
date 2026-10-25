@@ -199,6 +199,13 @@ async fn call(hub: &Hub, base: &str, method: Method, path: &str, body: Option<&V
     let bytes = body.map(serde_json::to_vec).transpose()?.unwrap_or_default();
     let sig = hub.identity.sign_request(method.as_str(), &authority(base)?, path, &bytes);
     let mut req = crate::http().request(method, format!("{base}{path}")).header("Codync-Sig", sig).timeout(TIMEOUT);
+    // A private relay requires this to enroll a new computer. The official cloud ignores it.
+    // It is not part of the URL `hello` publishes, so phones never see the token.
+    if path == "/v1/host/register"
+        && let Some(token) = super::cloud_url::relay_token(&hub.store)
+    {
+        req = req.header("Codync-Relay-Token", token);
+    }
     if body.is_some() {
         req = req.header("content-type", "application/json").body(bytes);
     }

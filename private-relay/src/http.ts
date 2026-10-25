@@ -1,5 +1,6 @@
 /** HTTP registration and the WebSocket upgrade. The upgrade is accepted only after admission. */
 
+import { timingSafeEqual } from 'node:crypto'
 import { createServer, type IncomingMessage, type Server } from 'node:http'
 import type { Duplex } from 'node:stream'
 import { Hono } from 'hono'
@@ -11,7 +12,17 @@ import type { RelayStore } from './store.ts'
 import { Rooms, type Admit } from './room.ts'
 
 const MAX_BODY = 64 * 1024
+const MAX_COMPUTERS = 32
+const REGISTER_WINDOW_MS = 60_000
+const REGISTER_LIMIT = 10
 const PLATFORMS = ['macos', 'linux', 'windows'] as const
+
+/** Equal-length compare. A length mismatch is a miss; the token is not a secret length. */
+function sameToken(given: string, expected: string): boolean {
+  const left = Buffer.from(given)
+  const right = Buffer.from(expected)
+  return left.length === right.length && timingSafeEqual(left, right)
+}
 
 function jsonError(status: number, code: string, message?: string): Response {
   return Response.json({ error: { code, ...(message ? { message } : {}) } }, { status })
@@ -106,10 +117,19 @@ export async function startRelay(options: {
   host?: string
   port?: number
   now?: () => number
+  /** Required to enroll a computer this relay does not already know. */
+  token?: string
+  maxComputers?: number
+  /** New enrollments allowed per minute. A known computer refreshing its row does not count. */
+  newRegisterLimit?: number
 }): Promise<RelayServer> {
   const now = options.now ?? Date.now
   const rooms = new Rooms(options.store, now)
   const store = options.store
+  const token = options.token ?? ''
+  const maxComputers = options.maxComputers ?? MAX_COMPUTERS
+  const newRegisterLimit = options.newRegisterLimit ?? REGISTER_LIMIT
+  const registerAttempts: number[] = []
   const app = new Hono()
 
   app.get('/health', (c) => c.json({ ok: true }))
@@ -132,6 +152,17 @@ export async function startRelay(options: {
     const id = await computerIdFor(fromB64url(signed.kid, 32)!)
     const existing = store.computer(id)
     if (existing && existing.status !== 'active') return jsonError(403, 'forbidden')
+    // A key this relay already accepted can refresh. Any other key needs the operator's token,
+    // and the table stops growing once it is full.
+    if (!existing) {
+      const at = now()
+      while (registerAttempts.length > 0 && at - registerAttempts[0]! >= REGISTER_WINDOW_MS) registerAttempts.shift()
+      if (registerAttempts.length >= newRegisterLimit) return jsonError(429, 'rateLimited')
+      registerAttempts.push(at)
+      const given = c.req.header('codync-relay-token') ?? ''
+      if (!token || !sameToken(given, token)) return jsonError(403, 'forbidden')
+      if (store.countComputers() >= maxComputers) return jsonError(403, 'forbidden')
+    }
     store.register({
       id,
       signPub: signed.kid,

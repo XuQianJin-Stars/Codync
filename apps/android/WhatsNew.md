@@ -23,6 +23,7 @@ else a generic "Bug fixes and improvements" line. Delete old sections.
 - Gemini 或 OpenAI 通話斷線時會自動重新連上並接著聊，不必重打。
 - 通話的通知會顯示通話時長、狀態和 Bot 正在做的事。
 - Gemini 與 OpenAI 的語音用你正在說的語言回答，你換語言它就跟著換。
+- 電腦使用自建中繼時，設定和連線狀態會顯示該中繼的地址，不再一律寫成 Cloudflare。
 
 ### en-US
 - While the bot works, the Gemini and OpenAI voice says what it's doing, when an approval waits or something fails, and reads the result.
@@ -30,6 +31,7 @@ else a generic "Bug fixes and improvements" line. Delete old sections.
 - A dropped Gemini or OpenAI call reconnects without hanging up.
 - The call's notification shows its length, state and what the bot is doing.
 - The Gemini and OpenAI voice answers in the language you speak and follows when you switch.
+- When a computer uses a private relay, Settings and status show its address.
 
 ## 2.25.0
 

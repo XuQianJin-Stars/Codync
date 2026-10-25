@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { createPrivateKey, createPublicKey } from 'node:crypto'
 import { copyFileSync, mkdtempSync, readFileSync } from 'node:fs'
 import { request as httpRequest } from 'node:http'
 import { tmpdir } from 'node:os'
@@ -11,6 +12,8 @@ import { PONG } from '../src/room.ts'
 import { RelayStore } from '../src/store.ts'
 import { sigHeader, signBytes } from './sign.ts'
 
+const TOKEN = 'test-relay-token-1'
+
 const vectors = JSON.parse(readFileSync(new URL('../../docs/reference/fixtures/remote-relay-vectors.json', import.meta.url), 'utf8')) as {
   keys: { hostSignSeed: string; hostSignPub: string; hostBoxPub: string; deviceSignSeed: string; deviceSignPub: string; computerId: string }
   acl: { d: string; sig: string }
@@ -21,7 +24,7 @@ const vectors = JSON.parse(readFileSync(new URL('../../docs/reference/fixtures/r
 async function relay(): Promise<{ server: RelayServer; dir: string }> {
   const dir = mkdtempSync(join(tmpdir(), 'codync-private-relay-'))
   const store = new RelayStore(join(dir, 'relay.sqlite'))
-  const server = await startRelay({ store, port: 0 })
+  const server = await startRelay({ store, port: 0, token: TOKEN })
   return { server, dir }
 }
 
@@ -40,7 +43,11 @@ async function register(server: RelayServer): Promise<void> {
   const bytes = new TextEncoder().encode(body)
   const path = '/v1/host/register'
   const header = await sigHeader(vectors.keys.hostSignSeed, vectors.keys.hostSignPub, 'POST', authorityOf(server.url), path, bytes)
-  const res = await fetch(`${server.url}${path}`, { method: 'POST', headers: { 'content-type': 'application/json', 'Codync-Sig': header }, body })
+  const res = await fetch(`${server.url}${path}`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'Codync-Sig': header, 'Codync-Relay-Token': TOKEN },
+    body,
+  })
   assert.equal(res.status, 200)
   const json = (await res.json()) as { computerId: string; owned: boolean }
   assert.equal(json.computerId, vectors.keys.computerId)
@@ -308,7 +315,7 @@ test('a restart between delivery and acknowledgment sends the item again', async
   const dir = mkdtempSync(join(tmpdir(), 'codync-private-relay-'))
   const file = join(dir, 'relay.sqlite')
   const store = new RelayStore(file)
-  const server = await startRelay({ store, port: 0 })
+  const server = await startRelay({ store, port: 0, token: TOKEN })
   const nonce = vectors.mailbox.clientNonce
   try {
     await register(server)
@@ -334,7 +341,7 @@ test('a restart between delivery and acknowledgment sends the item again', async
   }
 
   const recovered = new RelayStore(join(dir, 'crash.sqlite'))
-  const again = await startRelay({ store: recovered, port: 0 })
+  const again = await startRelay({ store: recovered, port: 0, token: TOKEN })
   try {
     assert.equal(recovered.mailboxState(vectors.keys.computerId, vectors.keys.deviceSignPub, nonce), 'queued')
     const host = await hostSocket(again)
@@ -362,6 +369,95 @@ test('a second host replaces the first, and an expired offer is forbidden', asyn
     const header = await sigHeader(vectors.keys.deviceSignSeed, vectors.keys.deviceSignPub, 'GET', authorityOf(server.url), path, new Uint8Array())
     await assert.rejects(openSocket(`${server.url.replace('http', 'ws')}${path}`, header), (error: { status?: number }) => error.status === 403)
     second.close()
+  } finally {
+    await server.close()
+  }
+})
+
+const PKCS8_PREFIX = Buffer.from('302e020100300506032b657004220420', 'hex')
+
+function freshKey(): { seed: string; pub: string } {
+  const seed = crypto.getRandomValues(new Uint8Array(32))
+  const key = createPrivateKey({ key: Buffer.concat([PKCS8_PREFIX, Buffer.from(seed)]), format: 'der', type: 'pkcs8' })
+  const der = createPublicKey(key).export({ format: 'der', type: 'spki' })
+  const raw = Buffer.isBuffer(der) ? der : Buffer.from(der)
+  return { seed: b64url(seed), pub: b64url(raw.subarray(raw.length - 32)) }
+}
+
+async function registerAs(server: RelayServer, seed: string, pub: string, token?: string): Promise<Response> {
+  const body = JSON.stringify({ boxKey: vectors.keys.hostBoxPub, name: 'Other', platform: 'linux', version: '2.24.0' })
+  const bytes = new TextEncoder().encode(body)
+  const path = '/v1/host/register'
+  const header = await sigHeader(seed, pub, 'POST', authorityOf(server.url), path, bytes)
+  const headers: Record<string, string> = { 'content-type': 'application/json', 'Codync-Sig': header }
+  if (token !== undefined) headers['Codync-Relay-Token'] = token
+  return fetch(`${server.url}${path}`, { method: 'POST', headers, body })
+}
+
+test('a new computer needs the registration token, and a known one can refresh without it', async () => {
+  const { server } = await relay()
+  try {
+    const outsider = freshKey()
+    const refused = await registerAs(server, outsider.seed, outsider.pub)
+    assert.equal(refused.status, 403)
+    assert.equal(server.store.countComputers(), 0)
+    const wrong = await registerAs(server, outsider.seed, outsider.pub, 'not-the-token')
+    assert.equal(wrong.status, 403)
+    assert.equal(server.store.countComputers(), 0)
+
+    await register(server)
+    const path = '/v1/host/register'
+    const body = JSON.stringify({ boxKey: vectors.keys.hostBoxPub, name: 'Studio', platform: 'macos', version: '2.24.0' })
+    const bytes = new TextEncoder().encode(body)
+    const header = await sigHeader(vectors.keys.hostSignSeed, vectors.keys.hostSignPub, 'POST', authorityOf(server.url), path, bytes)
+    const refresh = await fetch(`${server.url}${path}`, { method: 'POST', headers: { 'content-type': 'application/json', 'Codync-Sig': header }, body })
+    assert.equal(refresh.status, 200)
+    assert.equal(server.store.countComputers(), 1)
+  } finally {
+    await server.close()
+  }
+})
+
+test('new enrollments stop at the cap and at the per-minute limit', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'codync-private-relay-'))
+  const store = new RelayStore(join(dir, 'relay.sqlite'))
+  const server = await startRelay({ store, port: 0, token: TOKEN, maxComputers: 1, newRegisterLimit: 2 })
+  try {
+    await register(server)
+    const extra = freshKey()
+    const full = await registerAs(server, extra.seed, extra.pub, TOKEN)
+    assert.equal(full.status, 403)
+    assert.equal(server.store.countComputers(), 1)
+
+    const limited = await startRelay({ store: new RelayStore(join(dir, 'limit.sqlite')), port: 0, token: TOKEN, newRegisterLimit: 1 })
+    try {
+      const first = freshKey()
+      const second = freshKey()
+      assert.equal((await registerAs(limited, first.seed, first.pub, 'nope')).status, 403)
+      const blocked = await registerAs(limited, second.seed, second.pub, TOKEN)
+      assert.equal(blocked.status, 429)
+      assert.equal(limited.store.countComputers(), 0)
+    } finally {
+      await limited.close()
+    }
+  } finally {
+    await server.close()
+  }
+})
+
+test('a host that disconnects does not leave its room behind', async () => {
+  const { server } = await relay()
+  try {
+    await register(server)
+    const host = await hostSocket(server)
+    assert.equal(server.rooms.retained(), 1)
+    const closed = nextClose(host)
+    host.close()
+    await closed
+    for (let i = 0; i < 20 && server.rooms.retained() !== 0; i++) {
+      await new Promise((resolve) => setTimeout(resolve, 10))
+    }
+    assert.equal(server.rooms.retained(), 0)
   } finally {
     await server.close()
   }

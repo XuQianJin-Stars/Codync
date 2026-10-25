@@ -179,6 +179,11 @@ export class Rooms {
     ws.on('error', () => this.dropDevice(room, device))
   }
 
+  /** In-memory rooms. An empty one is dropped, so a disconnect does not keep it. */
+  retained(): number {
+    return this.rooms.size
+  }
+
   /** Closes silent sockets and drops expired mailbox items. */
   sweep(): void {
     const now = this.now()
@@ -374,6 +379,7 @@ export class Rooms {
       }
     }
     this.close(host.ws, code, reason)
+    this.release(room)
   }
 
   private dropDevice(room: Room, device: DeviceConn, code = 1000, reason = ''): void {
@@ -384,10 +390,15 @@ export class Rooms {
     const host = room.host
     if (host?.ready) send(host.ws, JSON.stringify({ t: 'close', link: device.link }))
     this.close(device.ws, code, reason)
+    this.release(room)
   }
 
   private closeDevice(room: Room, device: DeviceConn, code: number, reason: string): void {
     this.dropDevice(room, device, code, reason)
+  }
+
+  private release(room: Room): void {
+    if (!room.host && room.devices.length === 0) this.rooms.delete(room.id)
   }
 
   private close(ws: WebSocket, code: number, reason: string): void {

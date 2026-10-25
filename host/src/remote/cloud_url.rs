@@ -18,42 +18,96 @@ fn build_cloud_url() -> &'static str {
 
 /// The cloud base URL in use, or `None` when the cloud is off.
 pub fn url(store: &Store) -> Option<String> {
-    let off = std::env::var("CODYNC_CLOUD").is_ok_and(|v| v == "off")
-        || store.kv_get("cloud_enabled").as_deref() == Some("false");
-    if cfg!(test) {
-        return if off { None } else { store.kv_get("test_cloud_url") };
-    }
-    let env = std::env::var("CODYNC_CLOUD_URL").ok();
-    let saved = store.kv_get("cloud_url");
-    choose_url(off, [env, saved], build_cloud_url())
+    current(store).map(|address| address.url)
+}
+
+/// The registration token for the cloud actually in use. Absent for the official relay.
+pub(crate) fn relay_token(store: &Store) -> Option<String> {
+    current(store).and_then(|address| address.token)
 }
 
 /// `off` wins. Otherwise the first valid candidate, then `builtin`. An illegal candidate is skipped.
+#[cfg(test)]
 fn choose_url(off: bool, candidates: [Option<String>; 2], builtin: &str) -> Option<String> {
+    let [env, saved] = candidates;
+    resolve(off, env.as_deref(), saved.as_deref(), None, builtin).map(|address| address.url)
+}
+
+struct Address {
+    url: String,
+    /// Registration secret from the URL's user name (`https://token@relay.example.com`). Never part of `url`.
+    token: Option<String>,
+}
+
+/// The cloud in use: its public address, and the registration token when this computer has one.
+fn current(store: &Store) -> Option<Address> {
+    let off = std::env::var("CODYNC_CLOUD").is_ok_and(|v| v == "off")
+        || store.kv_get("cloud_enabled").as_deref() == Some("false");
+    if cfg!(test) {
+        return if off { None } else { store.kv_get("test_cloud_url").map(|url| Address { url, token: None }) };
+    }
+    let env = std::env::var("CODYNC_CLOUD_URL").ok();
+    let saved = store.kv_get("cloud_url");
+    let saved_token = store.kv_get("cloud_relay_token");
+    resolve(off, env.as_deref(), saved.as_deref(), saved_token.as_deref(), build_cloud_url())
+}
+
+/// `off` wins. Otherwise the first valid candidate, then `builtin`. An illegal candidate is skipped.
+/// A token belongs to the candidate that won: the saved kv token is not sent to an env URL.
+fn resolve(
+    off: bool,
+    env: Option<&str>,
+    saved: Option<&str>,
+    saved_token: Option<&str>,
+    builtin: &str,
+) -> Option<Address> {
     if off {
         return None;
     }
-    for candidate in candidates.into_iter().flatten() {
-        if let Some(url) = normalize_url(&candidate) {
-            return Some(url);
+    for (raw, extra) in [(env, None), (saved, saved_token)] {
+        let Some(raw) = raw else { continue };
+        if let Some(mut address) = parse_address(raw) {
+            if address.token.is_none() {
+                address.token = extra.filter(|token| !token.is_empty()).map(str::to_owned);
+            }
+            return Some(address);
         }
     }
-    Some(builtin.to_owned())
+    parse_address(builtin).or_else(|| Some(Address { url: builtin.to_owned(), token: None }))
 }
 
-/// A stored or typed cloud URL: https, or plain http to this computer, with no path or query.
+/// A stored or typed cloud URL: https, or plain http to this computer, with no path, query or fragment.
+/// A user name is the registration token and is not part of the returned address.
+#[cfg(test)]
 fn normalize_url(raw: &str) -> Option<String> {
-    let stored = raw.trim().trim_end_matches('/').to_owned();
-    valid_url(&format!("{stored}/")).then_some(stored)
+    parse_address(raw).map(|address| address.url)
 }
 
-/// A cloud URL this host may be pointed at: https, or plain http to this computer (local dev).
-fn valid_url(u: &str) -> bool {
-    let Ok(parsed) = reqwest::Url::parse(u) else { return false };
+/// https, or plain http to this computer (local dev). No path, query, fragment or password.
+/// The user name, when present, is a header-safe registration token.
+fn parse_address(raw: &str) -> Option<Address> {
+    let trimmed = raw.trim().trim_end_matches('/');
+    if trimmed.is_empty() {
+        return None;
+    }
+    let parsed = reqwest::Url::parse(&format!("{trimmed}/")).ok()?;
     let local = matches!(parsed.host_str(), Some("127.0.0.1" | "localhost" | "[::1]"));
-    parsed.path() == "/"
-        && parsed.query().is_none()
-        && (parsed.scheme() == "https" || (parsed.scheme() == "http" && local))
+    if parsed.path() != "/"
+        || parsed.query().is_some()
+        || parsed.fragment().is_some()
+        || parsed.password().is_some()
+        || !(parsed.scheme() == "https" || (parsed.scheme() == "http" && local))
+    {
+        return None;
+    }
+    let token = match parsed.username() {
+        "" => None,
+        name if name.bytes().all(|byte| (0x21..=0x7e).contains(&byte)) => Some(name.to_owned()),
+        _ => return None,
+    };
+    let host = parsed.host_str()?;
+    let port = parsed.port().map_or(String::new(), |port| format!(":{port}"));
+    Some(Address { url: format!("{}://{host}{port}", parsed.scheme()), token })
 }
 
 /// `setCloudUrl`: points this computer at a cloud, or clears the saved URL so the build's cloud
@@ -61,12 +115,19 @@ fn valid_url(u: &str) -> bool {
 /// The relay restarts either way. Local only.
 pub fn set_cloud_url(hub: &Hub, raw: Option<&str>) -> Result<CloudStatus> {
     match raw.map(str::trim).filter(|u| !u.is_empty()) {
-        None => hub.store.kv_delete("cloud_url")?,
+        None => {
+            hub.store.kv_delete("cloud_url")?;
+            hub.store.kv_delete("cloud_relay_token")?;
+        }
         Some(raw) => {
-            let Some(stored) = normalize_url(raw) else {
+            let Some(address) = parse_address(raw) else {
                 bail!("That relay address isn't a usable cloud URL.");
             };
-            hub.store.kv_set("cloud_url", &stored)?;
+            hub.store.kv_set("cloud_url", &address.url)?;
+            match address.token {
+                Some(token) => hub.store.kv_set("cloud_relay_token", &token)?,
+                None => hub.store.kv_delete("cloud_relay_token")?,
+            }
         }
     }
     let now = url(&hub.store);
@@ -94,11 +155,17 @@ mod tests {
 
     #[test]
     fn only_safe_cloud_urls() {
-        assert!(valid_url("https://codync-cloud.example.workers.dev/"));
-        assert!(valid_url("http://127.0.0.1:8787/"));
-        assert!(!valid_url("http://example.com/"));
-        assert!(!valid_url("https://example.com/path/"));
-        assert!(!valid_url("ftp://example.com/"));
+        assert_eq!(
+            normalize_url("https://codync-cloud.example.workers.dev/").as_deref(),
+            Some("https://codync-cloud.example.workers.dev")
+        );
+        assert_eq!(normalize_url("http://127.0.0.1:8787/").as_deref(), Some("http://127.0.0.1:8787"));
+        assert_eq!(normalize_url("https://tok@relay.example.com/").as_deref(), Some("https://relay.example.com"));
+        assert!(normalize_url("http://example.com/").is_none());
+        assert!(normalize_url("https://example.com/path/").is_none());
+        assert!(normalize_url("ftp://example.com/").is_none());
+        assert!(normalize_url("https://relay.example.com/#setup").is_none());
+        assert!(normalize_url("https://user:secret@relay.example.com").is_none());
     }
 
     #[test]
@@ -121,6 +188,26 @@ mod tests {
             "an illegal candidate is skipped"
         );
         assert_eq!(choose_url(true, [Some("https://relay.example.com".into()), None], "https://builtin"), None);
+        assert_eq!(
+            choose_url(false, [None, Some("https://tok@relay.example.com/#nope".into())], "https://builtin"),
+            Some("https://builtin".into()),
+            "a fragment is not a usable address"
+        );
+        let with_token =
+            resolve(false, None, Some("https://relay.example.com"), Some("s3cret-token-value"), "https://builtin");
+        let with_token = with_token.unwrap();
+        assert_eq!(with_token.url, "https://relay.example.com");
+        assert_eq!(with_token.token.as_deref(), Some("s3cret-token-value"));
+        let from_env = resolve(
+            false,
+            Some("https://from.env"),
+            Some("https://saved.example"),
+            Some("saved-token"),
+            "https://builtin",
+        )
+        .unwrap();
+        assert_eq!(from_env.url, "https://from.env");
+        assert_eq!(from_env.token, None, "the env address does not inherit the saved token");
     }
 
     #[test]
@@ -135,5 +222,15 @@ mod tests {
         assert_eq!(hub.store.kv_get("cloud_url"), None);
         set_cloud_url(&hub, Some("http://127.0.0.1:8788")).unwrap();
         assert_eq!(hub.store.kv_get("cloud_url").as_deref(), Some("http://127.0.0.1:8788"));
+        assert_eq!(hub.store.kv_get("cloud_relay_token"), None);
+        set_cloud_url(&hub, Some("https://s3cret-token-value@relay.example.com/")).unwrap();
+        assert_eq!(hub.store.kv_get("cloud_url").as_deref(), Some("https://relay.example.com"));
+        assert_eq!(hub.store.kv_get("cloud_relay_token").as_deref(), Some("s3cret-token-value"));
+        let fragment = set_cloud_url(&hub, Some("https://relay.example.com/#setup")).unwrap_err();
+        assert!(fragment.to_string().contains("relay address"), "{fragment}");
+        assert_eq!(hub.store.kv_get("cloud_relay_token").as_deref(), Some("s3cret-token-value"));
+        set_cloud_url(&hub, None).unwrap();
+        assert_eq!(hub.store.kv_get("cloud_url"), None);
+        assert_eq!(hub.store.kv_get("cloud_relay_token"), None);
     }
 }
