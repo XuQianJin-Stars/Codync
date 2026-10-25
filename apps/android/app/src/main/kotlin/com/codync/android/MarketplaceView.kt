@@ -5,9 +5,6 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
-import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.spring
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -19,7 +16,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardActions
@@ -28,7 +24,6 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -37,26 +32,19 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.clipToBounds
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.text.style.TextOverflow
 import com.codync.android.core.AgentBackend
-import com.codync.android.core.CatalogPage
 import com.codync.android.core.CatalogPaging
-import com.codync.android.core.fillCatalog
 import com.codync.android.core.MarketConnector
 import com.codync.android.core.MarketSkill
 import com.codync.android.design.*
 import com.kyant.shapes.Capsule
 import com.kyant.shapes.RoundedRectangle
-import java.util.UUID
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
 /**
@@ -77,14 +65,9 @@ import kotlinx.coroutines.launch
     val dismiss = LocalDismissModal.current
     val scope = rememberCoroutineScope()
     var search by remember { mutableStateOf("") }
-    // Bumped on each submitted search, so every section searches again.
-    var connectors by remember { mutableStateOf(CatalogPage<MarketConnector>()) }
-    var connectorRequest by remember { mutableStateOf("") }
-    var connectorQuery by remember { mutableStateOf("") }
-    // The registry page after the ones shown; null at the end.
-    var connectorCursor by remember { mutableStateOf<String?>(null) }
-    var loadingConnectors by remember { mutableStateOf(true) }
-    var loadingMore by remember { mutableStateOf(false) }
+    val connectors = remember(store) {
+        ConnectorCatalog<MarketConnector>({ it.name }) { search, cursor -> store.marketConnectors(search, cursor).let { it.items to it.nextCursor } }
+    }
     var skills by remember { mutableStateOf(emptyList<MarketSkill>()) }
     var loadingSkills by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -98,54 +81,24 @@ import kotlinx.coroutines.launch
     var showCredentials by remember { mutableStateOf(false) }
     var section by remember { mutableStateOf(ExtensionSection.Agents) }
     var agentPage by remember { mutableIntStateOf(0) }
-    var connectorPage by remember { mutableIntStateOf(0) }
     var skillPage by remember { mutableIntStateOf(0) }
     var pageSize by remember { mutableIntStateOf(CatalogPaging.phonePageSize) }
     var pickedPageSize by remember { mutableStateOf(false) }
     val query = search.trim()
-    suspend fun loadConnectors() {
-        val request = UUID.randomUUID().toString()
-        connectorRequest = request; connectorQuery = query; loadingConnectors = true; loadingMore = false
-        try {
-            val page = store.marketConnectors(query, null)
-            if (connectorRequest != request) return
-            connectors = CatalogPage<MarketConnector>().append(page.items) { it.name }
-            connectorCursor = page.nextCursor?.takeIf(String::isNotBlank); connectorPage = 0; error = null
-        } catch (cancelled: CancellationException) { throw cancelled }
-        catch (failure: Exception) {
-            if (connectorRequest != request) return
-            connectors = CatalogPage(); connectorCursor = null; error = failure.message ?: "Couldn't load connectors."
-        } finally { if (connectorRequest == request) loadingConnectors = false }
+    /**
+     * A size picked from the menu, or one that follows the layout, starts every list over in the same change as
+     * the size, so no pager is ever built for the new size at the old page.
+     */
+    fun resize(size: Int) { pageSize = size; agentPage = 0; skillPage = 0; connectors.show(0, size) }
+    fun changePageSize(size: Int) { pickedPageSize = true; resize(size) }
+    /** Turns the connector list to `page` at once; a page that isn't full then fills from the registry. */
+    fun showConnectorPage(page: Int) {
+        connectors.show(page, pageSize)
+        scope.launch { connectors.fill(pageSize) }
     }
-    fun changePageSize(size: Int) { pickedPageSize = true; pageSize = size; agentPage = 0; connectorPage = 0; skillPage = 0 }
-    fun showConnectorPage(next: Int) {
-        if (next < 0 || loadingMore || loadingConnectors) return
-        if (!CatalogPaging.needsFetch(connectors.items.size, next, pageSize)) {
-            connectorPage = CatalogPaging.clamp(next, connectors.items.size, pageSize, connectorCursor != null); return
-        }
-        if (connectorCursor == null) { connectorPage = CatalogPaging.clamp(next, connectors.items.size, pageSize, false); return }
-        val request = connectorRequest
-        loadingMore = true
-        scope.launch {
-            try {
-                val filled = fillCatalog(connectors, connectorCursor, next, pageSize, { it.name }) { cursor ->
-                    val page = store.marketConnectors(connectorQuery, cursor)
-                    if (connectorRequest != request) throw CancellationException()
-                    page.items to page.nextCursor
-                }
-                if (connectorRequest != request) return@launch
-                if (filled.stalled) { error = "Couldn't load more connectors."; return@launch }
-                connectors = filled.page
-                connectorCursor = filled.cursor
-                connectorPage = CatalogPaging.clamp(next, connectors.items.size, pageSize, connectorCursor != null); error = null
-            } catch (cancelled: CancellationException) { throw cancelled }
-            catch (failure: Exception) { if (connectorRequest == request) error = failure.message ?: "Couldn't load more connectors." }
-            finally { if (connectorRequest == request) loadingMore = false }
-        }
-    }
-    fun submit() { scope.launch { loadConnectors() } }
+    fun submit() { scope.launch { connectors.load(query) } }
     LaunchedEffect(Unit) { store.refreshPlugins(); store.refreshBackends() }
-    LaunchedEffect(Unit) { loadConnectors() }
+    LaunchedEffect(Unit) { connectors.load(query) }
     LaunchedEffect(Unit) {
         try { skills = store.marketSkills() }
         catch (cancelled: CancellationException) { throw cancelled }
@@ -157,66 +110,8 @@ import kotlinx.coroutines.launch
     val installedSkills = state.plugins?.skills.orEmpty()
     val shownSkills = if (query.isEmpty()) skills else skills.filter { it.name.contains(query, true) || it.description.contains(query, true) }
     val inset = Modifier.padding(horizontal = 44.dp)
-    fun turnPage(forward: Boolean) {
-        when (section) {
-            ExtensionSection.Agents -> {
-                val next = agentPage + if (forward) 1 else -1
-                if (next in 0 until CatalogPaging.pageCount(agents.size, pageSize)) agentPage = next
-            }
-            ExtensionSection.Skills -> {
-                val next = skillPage + if (forward) 1 else -1
-                if (next in 0 until CatalogPaging.pageCount(shownSkills.size, pageSize)) skillPage = next
-            }
-            ExtensionSection.Connectors -> showConnectorPage(connectorPage + if (forward) 1 else -1)
-        }
-    }
-    val shift = remember { Animatable(0f) }
-    var listWidth by remember { mutableFloatStateOf(0f) }
-    var settle by remember { mutableStateOf<Job?>(null) }
-    val still = reduceMotion()
-    fun canTurn(forward: Boolean): Boolean {
-        val next = { page: Int, count: Int, more: Boolean -> (page + if (forward) 1 else -1) in 0 until CatalogPaging.pageCount(count, pageSize, more) }
-        return when (section) {
-            ExtensionSection.Agents -> next(agentPage, agents.size, false)
-            ExtensionSection.Skills -> next(skillPage, shownSkills.size, false)
-            ExtensionSection.Connectors -> !loadingMore && !loadingConnectors && next(connectorPage, connectors.items.size, connectorCursor != null)
-        }
-    }
-    fun slide(forward: Boolean) {
-        if (!canTurn(forward)) return
-        if (still || listWidth < 1f) { turnPage(forward); return }
-        settle?.cancel()
-        val target = if (forward) -listWidth else listWidth
-        settle = scope.launch {
-            shift.animateTo(target, spring(dampingRatio = Spring.DampingRatioLowBouncy, stiffness = Spring.StiffnessMediumLow))
-            if (!isActive) return@launch
-            turnPage(forward)
-            shift.snapTo(0f)
-        }
-    }
     fun changeSearch(next: String) { search = next; agentPage = 0; skillPage = 0 }
     fun pagePad(count: Int, shown: Int) = if (count > pageSize) maxOf(0, pageSize - shown) else 0
-    @Composable fun Flanked(page: Int, count: Int, hasMore: Boolean = false, loading: Boolean = false, content: @Composable (Int) -> Unit) {
-        val pages = CatalogPaging.pageCount(count, pageSize, hasMore)
-        val current = CatalogPaging.clamp(page, count, pageSize, hasMore)
-        BoxWithConstraints(Modifier.fillMaxWidth()) {
-            val phone = maxWidth < 560.dp
-            val px = with(androidx.compose.ui.platform.LocalDensity.current) { maxWidth.toPx() }
-            androidx.compose.runtime.SideEffect { listWidth = px }
-            Box(Modifier.fillMaxWidth()) {
-                Box(Modifier.clipToBounds().fillMaxWidth()) {
-                    if (phone && shift.value > 1f && current > 0) Box(Modifier.graphicsLayer { translationX = shift.value - px }) { content(current - 1) }
-                    Box(Modifier.graphicsLayer { translationX = if (phone) shift.value else 0f }) { content(current) }
-                    if (phone && shift.value < -1f && current + 1 < pages) Box(Modifier.graphicsLayer { translationX = shift.value + px }) { content(current + 1) }
-                }
-                if (phone && pages > 1) {
-                    PageEdgeButton("Previous page", "chevron.left", current > 0 && !loading, Modifier.align(Alignment.CenterStart).offset(x = (-40).dp)) { slide(false) }
-                    PageEdgeButton(if (loading) "Loading…" else "Next page", "chevron.right", CatalogPaging.canForward(count, current, hasMore, pageSize) && !loading,
-                        Modifier.align(Alignment.CenterEnd).offset(x = 40.dp)) { slide(true) }
-                }
-            }
-        }
-    }
     @Composable fun Pins() {
         if (section == ExtensionSection.Agents && backends.any { it.needsNode }) NodeNotice(state) { addingNode = true }
         if (section == ExtensionSection.Connectors) MarketRow("Custom connector", "Any MCP server: a command or a URL", added = false, addLabel = "New",
@@ -228,7 +123,7 @@ import kotlinx.coroutines.launch
         when (section) {
             ExtensionSection.Agents -> if (agents.isEmpty()) Text(if (query.isEmpty()) tr("No agents yet.") else tr("No agents match “{query}”.").replace("{query}", query), style = Type.body, color = Palette.secondary)
             else {
-                Flanked(agentPage, agents.size) { index ->
+                FlankedPager(agentPage, agents.size, pageSize, settle = { agentPage = it }) { index ->
                     val shown = CatalogPaging.slice(agents, index, pageSize)
                     val slots = buildList<AgentBackend?> {
                         addAll(shown)
@@ -244,15 +139,18 @@ import kotlinx.coroutines.launch
                 }
             }
             ExtensionSection.Connectors -> when {
-                loadingConnectors || (loadingMore && CatalogPaging.needsFetch(connectors.items.size, connectorPage, pageSize)) -> SkeletonRows()
-                connectors.items.isEmpty() -> Text(if (query.isEmpty()) tr("Couldn't load connectors.") else tr("No connectors match “{query}”.").replace("{query}", query), style = Type.body, color = Palette.secondary)
+                connectors.loading -> SkeletonRows()
+                connectors.items.items.isEmpty() -> Text(if (query.isEmpty()) tr("Couldn't load connectors.") else tr("No connectors match “{query}”.").replace("{query}", query), style = Type.body, color = Palette.secondary)
                 else -> {
-                    Flanked(connectorPage, connectors.items.size, connectorCursor != null, loadingMore) { index ->
-                        val shown = CatalogPaging.slice(connectors.items, index, pageSize)
-                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    val rows = connectors.items.items
+                    FlankedPager(connectors.page, rows.size, pageSize, connectors.hasMore, connectors.loadingMore, ::showConnectorPage) { index ->
+                        val shown = CatalogPaging.slice(rows, index, pageSize)
+                        // The page past the loaded rows, while the registry fills it.
+                        if (shown.isEmpty()) SkeletonRows()
+                        else Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                             for (c in shown) MarketRow(c.title, c.description ?: c.name, c.installed,
                                 icon = { ServiceLogo(c.website, c.title, c.name) }) { installing = c }
-                            repeat(pagePad(connectors.items.size, shown.size)) { MarketRowSpacer() }
+                            repeat(pagePad(rows.size, shown.size)) { MarketRowSpacer() }
                         }
                     }
                 }
@@ -260,7 +158,7 @@ import kotlinx.coroutines.launch
             ExtensionSection.Skills -> if (loadingSkills) SkeletonRows()
             else if (query.isNotEmpty() && shownSkills.isEmpty()) Text(tr("No skills match “{query}”.").replace("{query}", query), style = Type.body, color = Palette.secondary)
             else {
-                Flanked(skillPage, shownSkills.size) { index ->
+                FlankedPager(skillPage, shownSkills.size, pageSize, settle = { skillPage = it }) { index ->
                     val shown = CatalogPaging.slice(shownSkills, index, pageSize)
                     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         for (s in shown) {
@@ -285,26 +183,23 @@ import kotlinx.coroutines.launch
     @Composable fun Pagers() {
         when (section) {
             ExtensionSection.Agents -> CatalogPager(agentPage, agents.size, pageSize, go = { agentPage = CatalogPaging.clamp(it, agents.size, pageSize) }, onSize = ::changePageSize)
-            ExtensionSection.Connectors -> if (!loadingConnectors) CatalogPager(connectorPage, connectors.items.size, pageSize, connectorCursor != null, loadingMore, ::showConnectorPage, ::changePageSize)
+            ExtensionSection.Connectors -> if (!connectors.loading) CatalogPager(connectors.page, connectors.items.items.size, pageSize, connectors.hasMore,
+                connectors.loadingMore, ::showConnectorPage, ::changePageSize)
             ExtensionSection.Skills -> if (!loadingSkills) CatalogPager(skillPage, shownSkills.size, pageSize, go = { skillPage = CatalogPaging.clamp(it, shownSkills.size, pageSize) }, onSize = ::changePageSize)
         }
     }
     @Composable fun SourceLine() {
-        val key = when (section) {
-            ExtensionSection.Agents -> "Agents come from the ACP registry and install on {name}."
-            ExtensionSection.Connectors -> "Connectors come from the official MCP Registry and install on {name}."
-            ExtensionSection.Skills -> "Skills come from Anthropic and install on {name}."
-        }
-        Text(tr(key).replace("{name}", state.hostName), style = Type.footnote, color = Palette.tertiary)
+        Text(tr(section.source).replace("{name}", state.hostName), style = Type.footnote, color = Palette.tertiary)
     }
     @Composable fun Foot() {
-        error?.let { Text(tr(it), style = Type.footnote, color = Palette.danger) }
+        (error ?: connectors.error)?.let { Text(tr(it), style = Type.footnote, color = Palette.danger) }
     }
     Box(Modifier.fillMaxSize().background(Palette.background)) {
         BoxWithConstraints(Modifier.fillMaxSize()) {
             val wide = maxWidth >= 760.dp
             LaunchedEffect(wide, pickedPageSize) {
-                if (!pickedPageSize) pageSize = if (wide) CatalogPaging.pageSize else CatalogPaging.phonePageSize
+                val size = if (wide) CatalogPaging.pageSize else CatalogPaging.phonePageSize
+                if (!pickedPageSize && size != pageSize) resize(size)
             }
             Column(Modifier.fillMaxSize().padding(vertical = 20.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
                 Header(state, inset, showInstalled) { showCredentials = true }
@@ -335,7 +230,7 @@ import kotlinx.coroutines.launch
         // The sheet's own close, over the page.
         Box(Modifier.align(Alignment.TopEnd).padding(8.dp)) { IconButton("Close", "xmark", action = dismiss) }
     }
-    CodyncSheet(installing, { installing = null }) { InstallConnectorSheet(it, state, store) { scope.launch { loadConnectors() } } }
+    CodyncSheet(installing, { installing = null }) { InstallConnectorSheet(it, state, store) { submit() } }
     CodyncSheet(showCredentials, { showCredentials = false }) { CredentialsView(state, store) }
     CodyncSheet(addingConnector, { addingConnector = false }) { CustomConnectorSheet(state, store) }
     CodyncSheet(viewingSkill, { viewingSkill = null }) { SkillSheet(it, state, store) }

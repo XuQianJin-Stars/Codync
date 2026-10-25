@@ -256,10 +256,11 @@ export const PAGE_SIZES = [6, 10, 20, 50] as const
 
 export type ExtensionSection = 'agents' | 'connectors' | 'skills'
 
-export const EXTENSION_SECTIONS: { id: ExtensionSection; label: string; icon: string }[] = [
-  { id: 'agents', label: 'Agents', icon: 'terminal' },
-  { id: 'connectors', label: 'Connectors', icon: 'point.3.connected.trianglepath.dotted' },
-  { id: 'skills', label: 'Skills', icon: 'book.pages' },
+/** Each section with its icon and the line saying where its items come from. */
+export const EXTENSION_SECTIONS: { id: ExtensionSection; label: string; icon: string; source: string }[] = [
+  { id: 'agents', label: 'Agents', icon: 'terminal', source: 'Agents come from the ACP registry and install on {name}.' },
+  { id: 'connectors', label: 'Connectors', icon: 'point.3.connected.trianglepath.dotted', source: 'Connectors come from the official MCP Registry and install on {name}.' },
+  { id: 'skills', label: 'Skills', icon: 'book.pages', source: 'Skills come from Anthropic and install on {name}.' },
 ]
 
 /** Loaded rows split into pages. While the registry still has a cursor, one more page is offered so the bar is never 1 / 1 for a list that continues. */
@@ -283,40 +284,10 @@ export function canPageForward(count: number, page: number, hasMore: boolean, si
   return page < pageCount(count, size, hasMore) - 1
 }
 
-/** The page starts past the rows already fetched, so the registry has to be asked. An empty first page is already settled. */
+/** A later page that isn't full yet, so the registry has to be asked. The first page is whatever the first answer held. */
 export function needsFetch(count: number, page: number, size = MARKET_PAGE_SIZE): boolean {
   const start = Math.max(0, page) * size
-  return start > 0 && start >= count
-}
-
-export type CursorStep = { kind: 'more'; cursor: string } | { kind: 'ended' } | { kind: 'stalled' }
-
-/** A blank cursor ends the list. The same cursor again is a stall, not another page. */
-export function cursorStep(previous: string, next: string | null | undefined): CursorStep {
-  if (!next) return { kind: 'ended' }
-  return next === previous ? { kind: 'stalled' } : { kind: 'more', cursor: next }
-}
-
-/** Pulls registry pages until `page` is filled. A repeated cursor stops the load instead of asking forever. */
-export async function fillConnectorPage<T>(
-  items: MarketplacePage<T>,
-  cursor: string | null,
-  page: number,
-  size: number,
-  id: (item: T) => string,
-  fetchPage: (cursor: string) => Promise<{ items: T[]; next: string | null } | null>,
-): Promise<{ items: MarketplacePage<T>; cursor: string | null; stalled: boolean }> {
-  let current = items
-  let nextCursor = cursor
-  while (nextCursor && needsFetch(current.items.length, page, size)) {
-    const loaded = await fetchPage(nextCursor)
-    if (!loaded) return { items: current, cursor: nextCursor, stalled: false }
-    const step = cursorStep(nextCursor, loaded.next)
-    if (step.kind === 'stalled') return { items: current, cursor: nextCursor, stalled: true }
-    current = appendPage(current, loaded.items, id)
-    nextCursor = step.kind === 'more' ? step.cursor : null
-  }
-  return { items: current, cursor: nextCursor, stalled: false }
+  return start > 0 && start + size > count
 }
 
 export const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e))

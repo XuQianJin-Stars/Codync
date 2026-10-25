@@ -8,6 +8,7 @@ import { useTr } from '../../lib/use-language'
 import { EXTENSION_SECTIONS, PAGE_SIZES, canPageForward, clampPage, pageCount, type ExtensionSection } from './market-models'
 import { ThinkingOrb } from '../../components/ThinkingOrb'
 import './marketplace.css'
+import './extensions-layout.css'
 
 // Building blocks the Marketplace's screens share (kit MarketplaceView.swift "Pieces").
 
@@ -295,10 +296,6 @@ export function useWindowHeight() {
   return height
 }
 
-/**
- * A Marketplace form in its own modal card (`.codyncSheet`), as tall as its content up to
- * `height`; `fixed` keeps it at `height` for content that fills the card (a terminal).
- */
 /** Agents, Connectors, Skills: the chosen row is filled, like a side tab. */
 export function ExtensionRail({ selection, onChange }: { selection: ExtensionSection; onChange: (id: ExtensionSection) => void }) {
   const tr = useTr()
@@ -317,7 +314,7 @@ export function ExtensionRail({ selection, onChange }: { selection: ExtensionSec
   )
 }
 
-/** Count, page size, previous, current / total, next, and a jump box. */
+/** Count, page size, previous, current / total, and next. */
 export function PageBar({ page, count, pageSize, hasMore = false, loading = false, onPage, onPageSize }: {
   page: number
   count: number
@@ -328,17 +325,10 @@ export function PageBar({ page, count, pageSize, hasMore = false, loading = fals
   onPageSize: (size: number) => void
 }) {
   const tr = useTr()
-  const [jump, setJump] = useState('')
   const pages = pageCount(count, pageSize, hasMore)
   const current = clampPage(page, count, pageSize, hasMore)
   const canPrev = current > 0 && !loading
   const canNext = canPageForward(count, current, hasMore, pageSize) && !loading
-  const commit = () => {
-    const n = Number(jump)
-    if (!Number.isInteger(n) || n < 1) return
-    onPage(n - 1)
-    setJump('')
-  }
   return (
     <div className="market-pager">
       <span>{tr('{count} total').replaceAll('{count}', String(count))}</span>
@@ -356,26 +346,14 @@ export function PageBar({ page, count, pageSize, hasMore = false, loading = fals
       <button type="button" className="market-pager-step" disabled={!canPrev} onClick={() => onPage(current - 1)}>{tr('Previous page')}</button>
       <span className="market-pager-fraction" aria-current="page">{current + 1} / {pages}</span>
       <button type="button" className="market-pager-step" disabled={!canNext} onClick={() => onPage(current + 1)}>{tr(loading ? 'Loading…' : 'Next page')}</button>
-      <span className="market-pager-jump">
-        <span>{tr('Jump to')}</span>
-        <input
-          value={jump}
-          inputMode="numeric"
-          aria-label={tr('Jump to')}
-          onChange={(e) => setJump(e.target.value.replace(/\D/g, '').slice(0, 4))}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && !e.nativeEvent.isComposing) {
-              e.preventDefault()
-              commit()
-            }
-          }}
-        />
-        <button type="button" className="market-pager-step" disabled={loading} onClick={commit}>{tr('Go')}</button>
-      </span>
     </div>
   )
 }
 
+/**
+ * A Marketplace form in its own modal card (`.codyncSheet`), as tall as its content up to
+ * `height`; `fixed` keeps it at `height` for content that fills the card (a terminal).
+ */
 export function FormSheet({ open, onClose, width = 520, height = 600, fixed = false, children }: { open: boolean; onClose: () => void; width?: number; height?: number; fixed?: boolean; children: ReactNode }) {
   const windowHeight = useWindowHeight()
   const cap = Math.min(height, windowHeight - 76)

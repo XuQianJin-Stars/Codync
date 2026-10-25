@@ -1,3 +1,5 @@
+import SwiftUI
+
 /// Keep fetched catalog metadata in memory. The Extensions tabs page through it.
 struct MarketplacePage<Item: Identifiable> {
     private(set) var items: [Item] = []
@@ -42,50 +44,81 @@ enum CatalogPaging {
         page < pageCount(count, size: size, hasMore: hasMore) - 1
     }
 
-    /// The page starts past the rows already fetched, so the registry has to be asked.
-    /// An empty first page is already settled: `needsFetch(0, 0)` is false.
+    /// A later page that isn't full yet, so the registry has to be asked. The first page is whatever the first answer held.
     static func needsFetch(count: Int, page: Int, size: Int = pageSize) -> Bool {
         let start = max(0, page) * size
-        return start > 0 && start >= count
+        return start > 0 && start + size > count
     }
 }
 
-/// What to do with the cursor a registry page handed back.
-enum CatalogCursor: Equatable {
-    case more(String)
-    case ended
-    case stalled
+/// The connector list Extensions pages through: the rows loaded so far, the registry cursor and the
+/// page on screen. A page that isn't full asks the registry until it is, or until the cursor ends.
+@MainActor @Observable
+final class ConnectorCatalog<Item: Identifiable> {
+    typealias Fetch = @MainActor (_ search: String, _ cursor: String?) async throws -> (items: [Item], next: String?)
 
-    /// A blank cursor ends the list. The same cursor again is a stall, not another page.
-    static func step(previous: String, next: String?) -> CatalogCursor {
-        guard let next, !next.isEmpty else { return .ended }
-        return next == previous ? .stalled : .more(next)
+    private(set) var items = MarketplacePage<Item>()
+    /// The registry page after the ones loaded; nil at the end.
+    private(set) var cursor: String?
+    /// The page on screen. While the registry fills it, it can be the page past the loaded rows.
+    private(set) var page = 0
+    private(set) var loading = true
+    private(set) var loadingMore = false
+    private(set) var error: String?
+    private var request = UUID()
+    private var query = ""
+
+    var hasMore: Bool { cursor != nil }
+
+    /// The first registry page for `search`; answers to an older search are dropped.
+    func load(search: String, fetch: Fetch) async {
+        let request = UUID()
+        self.request = request
+        query = search
+        loading = true
+        loadingMore = false
+        defer { if self.request == request { loading = false } }
+        do {
+            let first = try await fetch(search, nil)
+            guard !Task.isCancelled, self.request == request else { return }
+            items.replace(with: first.items)
+            cursor = first.next
+            page = 0
+            error = nil
+        } catch {
+            guard self.request == request, !(error is CancellationError), !Task.isCancelled else { return }
+            items.replace(with: [])
+            cursor = nil
+            self.error = error.localizedDescription
+        }
     }
-}
 
-enum CatalogStall: Error { case repeatedCursor }
+    /// Turns to `next` at once, so a swipe stays where it landed; `fill` then loads its rows.
+    func show(_ next: Int, size: Int) {
+        guard !loading else { return }
+        page = CatalogPaging.clamp(page: next, count: items.items.count, size: size, hasMore: hasMore)
+    }
 
-/// Rows loaded so far and the cursor for the next registry page.
-struct ConnectorCatalog<Item: Identifiable> {
-    var items = MarketplacePage<Item>()
-    var cursor: String?
-
-    /// Pulls registry pages until `page` is filled. A repeated cursor throws instead of asking forever.
-    /// Stays on the main actor: the caller is a view, and the fetch closure reads its state.
-    @MainActor
-    mutating func fill(page: Int, size: Int, fetch: (String) async throws -> (items: [Item], next: String?)) async throws {
-        while let cursor = cursor, CatalogPaging.needsFetch(count: items.items.count, page: page, size: size) {
-            let loaded = try await fetch(cursor)
-            switch CatalogCursor.step(previous: cursor, next: loaded.next) {
-            case .more(let next):
-                items.append(loaded.items)
-                self.cursor = next
-            case .ended:
-                items.append(loaded.items)
-                self.cursor = nil
-            case .stalled:
-                throw CatalogStall.repeatedCursor
+    /// Asks the registry until the page on screen is full or the cursor ends. A page turned meanwhile is
+    /// filled by the same loop. If a page fails, the list goes back to the last page with rows.
+    func fill(size: Int, animation: Animation? = nil, fetch: Fetch) async {
+        guard !loading, !loadingMore, hasMore, CatalogPaging.needsFetch(count: items.items.count, page: page, size: size) else { return }
+        let request = self.request
+        loadingMore = true
+        defer { if self.request == request { loadingMore = false } }
+        do {
+            while let cursor, CatalogPaging.needsFetch(count: items.items.count, page: page, size: size) {
+                let more = try await fetch(query, cursor)
+                guard !Task.isCancelled, self.request == request else { return }
+                items.append(more.items)
+                self.cursor = more.next
             }
+            page = CatalogPaging.clamp(page: page, count: items.items.count, size: size, hasMore: hasMore)
+            error = nil
+        } catch {
+            guard self.request == request, !(error is CancellationError), !Task.isCancelled else { return }
+            self.error = error.localizedDescription
+            withAnimation(animation) { page = CatalogPaging.clamp(page: page, count: items.items.count, size: size) }
         }
     }
 }

@@ -15,10 +15,6 @@ public enum Motion {
     /// Size and layout changes (panels growing, cards resizing): the critically damped
     /// `.3s` spring Grok writes as a `linear()` curve.
     public static let layout = Animation.spring(duration: 0.3, bounce: 0)
-    /// The page sliding across when an arrow is tapped. `velocity` is a fraction of the remaining distance per second. A little bounce, under a third of a second.
-    public static func page(velocity: Double) -> Animation {
-        .interpolatingSpring(duration: 0.28, bounce: 0.12, initialVelocity: velocity)
-    }
     /// A slightly slower, critically damped spring for a new chat message and its scroll.
     public static let conversation = Animation.spring(duration: 0.42, bounce: 0)
 

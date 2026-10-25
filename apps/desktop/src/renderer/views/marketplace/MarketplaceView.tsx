@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { Backend } from '@shared/models'
 import { Button, IconButton, Spinner } from '../../components/Controls'
 import { Icon } from '../../components/Icon'
@@ -13,21 +13,18 @@ import { CredentialsView } from './CredentialsView'
 import { CustomConnectorSheet, InstallConnectorSheet, NewSkillSheet } from './ConnectorSheets'
 import { SetupTerminalView } from './SetupTerminal'
 import { SkillSheet, type SkillRef } from './SkillSheet'
-import {
-  clampPage, emptyPage, errorText, fillConnectorPage, market, MARKET_PAGE_SIZE, needsFetch, needsSignIn, pageItems, replacePage,
-  type ExtensionSection, type MarketConnector, type MarketSkill,
-} from './market-models'
-import { MarketPanel } from './MarketplacePanel'
+import { useModel } from '../../lib/observable'
+import { ConnectorCatalog } from './connector-catalog'
+import { errorText, market, MARKET_PAGE_SIZE, needsSignIn, type ExtensionSection, type MarketConnector, type MarketSkill } from './market-models'
+import { AgentsPanel, ConnectorsPanel, MarketPanel, SkillsPanel } from './MarketplacePanel'
 import { AppLogo, ExtensionRail, FormSheet, ItemGrid, ItemRow, MarketSection, ScreenHeader, ServiceLogo, SkillGlyph, SlideStack } from './pieces'
 import { usePlugins } from './plugins'
 import { useTr } from '../../lib/use-language'
 
-const connectorId = (c: MarketConnector) => c.name
-
 /**
  * Extensions for the bots on one computer (the store in context): Agents, Connectors
- * and Skills, one at a time. Each list turns a page; a connector page past the rows already
- * loaded fetches the next registry page. Installing happens on that computer; each bot
+ * and Skills, one at a time. Each list turns a page; a connector page that isn't full fetches
+ * more from the registry (`ConnectorCatalog`). Installing happens on that computer; each bot
  * turns connectors and skills on in its settings. Each computer has its own, opened
  * from its heading in the sidebar.
  */
@@ -38,12 +35,12 @@ export function MarketplaceView() {
   const dismiss = useDismiss()
   useScreenViewed('marketplace')
   const [search, setSearch] = useState('')
-  const [connectors, setConnectors] = useState(emptyPage<MarketConnector>)
-  /** The registry page after the ones shown; null at the end. */
-  const [connectorCursor, setConnectorCursor] = useState<string | null>(null)
-  const [loadingMore, setLoadingMore] = useState(false)
+  const [catalog] = useState(() => new ConnectorCatalog<MarketConnector>(
+    (c) => c.name,
+    async (q, cursor) => market.marketConnectors(await store.ready(), q, cursor),
+  ))
+  const connectors = useModel(catalog)
   const [skills, setSkills] = useState<MarketSkill[]>([])
-  const [loadingConnectors, setLoadingConnectors] = useState(true)
   const [loadingSkills, setLoadingSkills] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [installing, setInstalling] = useState<MarketConnector | null>(null)
@@ -55,13 +52,10 @@ export function MarketplaceView() {
   const [addingNode, setAddingNode] = useState(false)
   const [section, setSection] = useState<ExtensionSection>('agents')
   const [agentPage, setAgentPage] = useState(0)
-  const [connectorPage, setConnectorPage] = useState(0)
   const [skillPage, setSkillPage] = useState(0)
   const [pageSize, setPageSize] = useState(MARKET_PAGE_SIZE)
   const [showInstalled, setShowInstalled] = useState(false)
   const [showCredentials, setShowCredentials] = useState(false)
-  const request = useRef(0)
-  const connectorQuery = useRef('')
 
   const query = search.trim()
   const matches = (text: string | null | undefined) => (text ?? '').toLowerCase().includes(query.toLowerCase())
@@ -70,76 +64,24 @@ export function MarketplaceView() {
   const shownSkills = query ? skills.filter((s) => matches(s.name) || matches(s.description)) : skills
   const installedCount = plugins.installedConnectors.length + plugins.installedSkills.length
 
-  const loadConnectors = async (q = query) => {
-    const id = ++request.current
-    connectorQuery.current = q
-    setLoadingConnectors(true)
-    setLoadingMore(false)
-    try {
-      const page = await market.marketConnectors(await store.ready(), q)
-      if (request.current !== id) return
-      setConnectors(replacePage(page.items, connectorId))
-      setConnectorCursor(page.next)
-      setConnectorPage(0)
-      setError(null)
-    } catch (e) {
-      if (request.current !== id) return
-      setConnectors(emptyPage())
-      setConnectorCursor(null)
-      setError(errorText(e))
-    } finally {
-      if (request.current === id) setLoadingConnectors(false)
-    }
-  }
-
   const changePageSize = (size: number) => {
     setPageSize(size)
     setAgentPage(0)
-    setConnectorPage(0)
     setSkillPage(0)
+    connectors.show(0, size)
   }
 
-  const showConnectorPage = async (next: number) => {
-    if (next < 0 || loadingMore || loadingConnectors) return
-    const id = request.current
-    let items = connectors
-    let cursor = connectorCursor
-    if (!needsFetch(items.items.length, next, pageSize)) {
-      setConnectorPage(clampPage(next, items.items.length, pageSize, cursor !== null))
-      return
-    }
-    if (!cursor) {
-      setConnectorPage(clampPage(next, items.items.length, pageSize, false))
-      return
-    }
-    setLoadingMore(true)
-    try {
-      const filled = await fillConnectorPage(items, cursor, next, pageSize, connectorId, async (pageCursor) => {
-        const page = await market.marketConnectors(await store.ready(), connectorQuery.current, pageCursor)
-        if (request.current !== id) return null
-        return page
-      })
-      if (request.current !== id) return
-      if (filled.stalled) {
-        setError("Couldn't load more connectors.")
-        return
-      }
-      setConnectors(filled.items)
-      setConnectorCursor(filled.cursor)
-      setConnectorPage(clampPage(next, filled.items.items.length, pageSize, filled.cursor !== null))
-      setError(null)
-    } catch (e) {
-      if (request.current === id) setError(errorText(e))
-    } finally {
-      if (request.current === id) setLoadingMore(false)
-    }
+  /** Turns the connector list to `page` at once; a page that isn't full then fills from the registry. */
+  const showConnectorPage = (page: number) => {
+    connectors.show(page, pageSize)
+    void connectors.fill(pageSize)
   }
 
   useEffect(() => {
     void plugins.refresh()
     // Picks up CLIs installed or signed in outside Codync.
     void store.refreshBackends()
-    void loadConnectors('')
+    void connectors.load('')
     void (async () => {
       try {
         setSkills(await market.marketSkills(await store.ready()))
@@ -148,12 +90,12 @@ export function MarketplaceView() {
       }
       setLoadingSkills(false)
     })()
-    return () => void request.current++
+    return () => connectors.cancel()
     // Mount only, like the view's `.task`s.
   }, [])
 
   const submit = (q: string) => {
-    void loadConnectors(q)
+    void connectors.load(q)
   }
 
   const installSkill = async (s: MarketSkill) => {
@@ -232,11 +174,6 @@ export function MarketplaceView() {
     </div>
   )
 
-  const skillRows = pageItems(shownSkills, skillPage, pageSize)
-  const agentRows = pageItems(agents, agentPage, pageSize)
-  const connectorRows = pageItems(connectors.items, connectorPage, pageSize)
-  const connectorPending = needsFetch(connectors.items.length, connectorPage, pageSize)
-
   const page = (
     <div className="market-page">
       <div className="market-frame">
@@ -244,41 +181,46 @@ export function MarketplaceView() {
         {searchField}
         <div className="market-split">
           <ExtensionRail selection={section} onChange={setSection} />
-          <MarketPanel
-            section={section}
-            hostName={store.hostName}
-            needsNode={allAgents.some((b) => b.node === 'missing')}
-            query={query}
-            agents={agents}
-            agentRows={agentRows}
-            agentPage={agentPage}
-            connectors={connectors}
-            connectorRows={connectorRows}
-            connectorPage={connectorPage}
-            connectorCursor={connectorCursor}
-            connectorPending={connectorPending}
-            shownSkills={shownSkills}
-            skillRows={skillRows}
-            skillPage={skillPage}
-            installedSkillIds={plugins.installedSkills.map((s) => s.id)}
-            busySkill={busySkill}
-            loadingConnectors={loadingConnectors}
-            loadingMore={loadingMore}
-            loadingSkills={loadingSkills}
-            pageSize={pageSize}
-            error={error}
-            onAddNode={() => setAddingNode(true)}
-            onAddConnector={() => setAddingConnector(true)}
-            onWriteSkill={() => setWritingSkill(true)}
-            onAgent={setAgent}
-            onInstall={setInstalling}
-            onInstallSkill={(s) => void installSkill(s)}
-            onViewSkill={setViewingSkill}
-            onAgentPage={(next) => setAgentPage(clampPage(next, agents.length, pageSize))}
-            onConnectorPage={(next) => void showConnectorPage(next)}
-            onSkillPage={setSkillPage}
-            onPageSize={changePageSize}
-          />
+          <MarketPanel section={section} hostName={store.hostName} error={error ?? connectors.error}>
+            {section === 'agents' ? (
+              <AgentsPanel
+                agents={agents}
+                query={query}
+                needsNode={allAgents.some((b) => b.node === 'missing')}
+                page={agentPage}
+                pageSize={pageSize}
+                onPage={setAgentPage}
+                onPageSize={changePageSize}
+                onAddNode={() => setAddingNode(true)}
+                onAgent={setAgent}
+              />
+            ) : section === 'connectors' ? (
+              <ConnectorsPanel
+                catalog={connectors}
+                query={query}
+                pageSize={pageSize}
+                onPage={showConnectorPage}
+                onPageSize={changePageSize}
+                onAddConnector={() => setAddingConnector(true)}
+                onInstall={setInstalling}
+              />
+            ) : (
+              <SkillsPanel
+                skills={shownSkills}
+                loading={loadingSkills}
+                query={query}
+                installedSkillIds={plugins.installedSkills.map((s) => s.id)}
+                busySkill={busySkill}
+                page={skillPage}
+                pageSize={pageSize}
+                onPage={setSkillPage}
+                onPageSize={changePageSize}
+                onWriteSkill={() => setWritingSkill(true)}
+                onInstallSkill={(s) => void installSkill(s)}
+                onViewSkill={setViewingSkill}
+              />
+            )}
+          </MarketPanel>
         </div>
       </div>
       {/* Dismissing slides the sheet away; clearing the caller's state would cut it off. */}
@@ -292,7 +234,7 @@ export function MarketplaceView() {
     <>
       <SlideStack base={page} top={showCredentials ? <CredentialsView onBack={() => setShowCredentials(false)} /> : showInstalled ? <InstalledView back={() => setShowInstalled(false)} /> : null} />
       <FormSheet open={installing !== null} onClose={() => setInstalling(null)}>
-        {installing ? <InstallConnectorSheet key={installing.name} item={installing} done={() => void loadConnectors(connectorQuery.current)} /> : null}
+        {installing ? <InstallConnectorSheet key={installing.name} item={installing} done={() => void connectors.reload()} /> : null}
       </FormSheet>
       <FormSheet open={addingConnector} onClose={() => setAddingConnector(false)}>
         <CustomConnectorSheet />

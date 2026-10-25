@@ -152,9 +152,6 @@ pub struct Market {
     /// Page index on Agents, Connectors, then Skills.
     pub pages: [usize; 3],
     pub page_size: usize,
-    /// Digits typed after Ctrl+G, until Enter jumps.
-    pub jumping: bool,
-    pub jump: String,
 }
 
 pub enum Row<'a> {
@@ -166,6 +163,16 @@ pub enum Row<'a> {
     Registry(&'a Value),
     OwnSkill(&'a Value),
     Skill(&'a Value),
+}
+
+/// One page of the open marketplace tab.
+pub struct MarketPage<'a> {
+    /// The rows every page starts with (Add Node.js, what's installed, Custom connector), then this page's catalog rows.
+    pub rows: Vec<Row<'a>>,
+    /// Catalog rows on the tab, without the ones every page starts with.
+    pub count: usize,
+    pub page: usize,
+    pub pages: usize,
 }
 
 pub struct AgentSetup {

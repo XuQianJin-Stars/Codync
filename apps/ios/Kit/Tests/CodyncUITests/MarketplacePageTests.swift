@@ -32,26 +32,34 @@ private struct CatalogItem: Identifiable { let id: Int }
     #expect(!CatalogPaging.canForward(count: 8, page: 0, hasMore: false))
     #expect(!CatalogPaging.needsFetch(count: 60, page: 5))
     #expect(CatalogPaging.needsFetch(count: 60, page: 6))
+    #expect(CatalogPaging.needsFetch(count: 72, page: 7))
+    #expect(!CatalogPaging.needsFetch(count: 80, page: 7))
     #expect(!CatalogPaging.needsFetch(count: 0, page: 0))
+    #expect(!CatalogPaging.needsFetch(count: 3, page: 0))
     #expect(CatalogPaging.needsFetch(count: 0, page: 1))
 }
 
-@Test @MainActor func aRepeatedCursorStopsTheFill() async {
-    var catalog = ConnectorCatalog<CatalogItem>()
-    catalog.items.replace(with: (0..<10).map { CatalogItem(id: $0) })
-    catalog.cursor = "a"
-    var stalled = false
-    do {
-        try await catalog.fill(page: 1, size: 10) { _ in
-            ((10..<12).map { CatalogItem(id: $0) }, "a")
-        }
-    } catch is CatalogStall {
-        stalled = true
-    } catch {
-        Issue.record("Unexpected error: \(error)")
+private struct Offline: Error {}
+
+@Test @MainActor func aConnectorPageFillsUntilFullAndFallsBackWhenItCannot() async {
+    let catalog = ConnectorCatalog<CatalogItem>()
+    var asked: [String?] = []
+    let rows = { (range: Range<Int>) in range.map { CatalogItem(id: $0) } }
+    await catalog.load(search: "") { _, cursor in asked.append(cursor); return (rows(0..<15), "a") }
+    #expect(catalog.items.items.count == 15 && catalog.page == 0 && !catalog.loading)
+
+    // Page 2 needs rows 10-19: two registry pages fill it.
+    catalog.show(1, size: 10)
+    await catalog.fill(size: 10) { _, cursor in
+        asked.append(cursor)
+        return cursor == "a" ? (rows(15..<18), "b") : (rows(18..<25), "c")
     }
-    #expect(stalled)
-    #expect(catalog.items.items.map(\.id) == Array(0..<10))
-    #expect(CatalogCursor.step(previous: "a", next: "b") == .more("b"))
-    #expect(CatalogCursor.step(previous: "a", next: nil) == .ended)
+    #expect(asked == [nil, "a", "b"])
+    #expect(catalog.page == 1 && catalog.items.items.count == 25 && catalog.cursor == "c" && !catalog.loadingMore)
+
+    // The page past the loaded rows fails: back to the last page with rows.
+    catalog.show(3, size: 10)
+    #expect(catalog.page == 3)
+    await catalog.fill(size: 10) { _, _ in throw Offline() }
+    #expect(catalog.page == 2 && catalog.error != nil)
 }

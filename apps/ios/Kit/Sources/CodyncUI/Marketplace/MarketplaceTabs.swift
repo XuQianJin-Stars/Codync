@@ -39,6 +39,8 @@ extension MarketplaceView {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        // On a phone the section gives up a little width so the page buttons beside the list have room.
+        .padding(.horizontal, sizeClass == .compact ? 8 : 0)
         .id(section)
         .transition(.opacity)
     }
@@ -68,30 +70,35 @@ extension MarketplaceView {
         } add: {
             addingConnector = true
         }
-        if loadingConnectors || (loadingMore && CatalogPaging.needsFetch(count: connectors.items.count, page: connectorPage, size: pageSize)) {
+        if connectors.loading {
             SkeletonGrid()
-        } else if connectors.isEmpty {
+        } else if connectors.items.isEmpty {
             Text(query.isEmpty ? L10n.tr("Couldn't load connectors.") : L10n.tr("No connectors match “{query}”.").replacingOccurrences(of: "{query}", with: query))
                 .foregroundStyle(Palette.secondary)
         } else {
-            flanked(count: connectors.items.count, page: connectorPage, hasMore: connectorCursor != nil, loading: loadingMore) { index in
-                let shown = Array(CatalogPaging.slice(connectors.items, page: index, size: pageSize))
-                ItemGrid {
-                    ForEach(shown) { c in
-                        MarketRow(title: c.title, subtitle: c.description ?? c.name, added: c.installed) {
-                            ServiceLogo(website: c.website, name: c.title, registryName: c.name)
-                        } add: {
-                            installing = c
+            let rows = connectors.items.items
+            flanked(count: rows.count, page: connectors.page, hasMore: connectors.hasMore, loading: connectors.loadingMore) { index in
+                let shown = Array(CatalogPaging.slice(rows, page: index, size: pageSize))
+                // The page past the loaded rows, while the registry fills it.
+                if shown.isEmpty {
+                    SkeletonGrid()
+                } else {
+                    ItemGrid {
+                        ForEach(shown) { c in
+                            MarketRow(title: c.title, subtitle: c.description ?? c.name, added: c.installed) {
+                                ServiceLogo(website: c.website, name: c.title, registryName: c.name)
+                            } add: {
+                                installing = c
+                            }
                         }
+                        ForEach(0..<pagePad(count: rows.count, shown: shown.count), id: \.self) { _ in MarketRowSpacer() }
                     }
-                    ForEach(0..<pagePad(count: connectors.items.count, shown: shown.count), id: \.self) { _ in MarketRowSpacer() }
                 }
             }
         }
-        if !loadingConnectors {
-            CatalogPager(page: connectorPage, count: connectors.items.count, pageSize: pageSize, hasMore: connectorCursor != nil, loading: loadingMore, go: { page in
-                Task { await showConnectorPage(page) }
-            }, onSize: changePageSize)
+        if !connectors.loading {
+            CatalogPager(page: connectors.page, count: connectors.items.items.count, pageSize: pageSize, hasMore: connectors.hasMore,
+                         loading: connectors.loadingMore, go: { showConnectorPage($0, animated: true) }, onSize: changePageSize)
         }
     }
 
@@ -139,28 +146,36 @@ extension MarketplaceView {
         count > pageSize ? max(0, pageSize - shown) : 0
     }
 
-    /// Previous and next on either side of the list.
+    /// On a phone the pages sit side by side in a paging scroll view, so a swipe turns the page,
+    /// with previous and next on either side. A wide layout shows the one page.
     @ViewBuilder private func flanked<Content: View>(count: Int, page: Int, hasMore: Bool = false, loading: Bool = false, @ViewBuilder content: @escaping (Int) -> Content) -> some View {
         let pages = CatalogPaging.pageCount(count, size: pageSize, hasMore: hasMore)
         let current = CatalogPaging.clamp(page: page, count: count, size: pageSize, hasMore: hasMore)
-        let canNext = CatalogPaging.canForward(count: count, page: current, hasMore: hasMore, size: pageSize) && !loading
-        let edges = sizeClass == .compact && pages > 1
-        Group {
-            if sizeClass == .compact {
-                PageDeck(shift: pageShift, page: current, pageCount: pages, content: content)
-            } else {
-                content(current)
-            }
-        }
-        .overlay {
-            if edges {
-                HStack(spacing: 0) {
-                    PageEdgeButton(title: "Previous page", systemImage: "chevron.left", enabled: current > 0 && !loading) { slide(forward: false) }
-                    Color.clear.frame(maxWidth: .infinity).allowsHitTesting(false)
-                    PageEdgeButton(title: loading ? "Loading…" : "Next page", systemImage: "chevron.right", enabled: canNext) { slide(forward: true) }
+        if sizeClass == .compact {
+            ScrollView(.horizontal) {
+                LazyHStack(alignment: .top, spacing: 0) {
+                    ForEach(0..<pages, id: \.self) { index in
+                        content(index).containerRelativeFrame(.horizontal)
+                    }
                 }
-                .padding(.horizontal, -40)
+                .scrollTargetLayout()
             }
+            .scrollTargetBehavior(.paging)
+            .scrollIndicators(.hidden)
+            .scrollPosition(id: Binding(get: { current }, set: { if let index = $0, index != current { swiped(to: index) } }))
+            .overlay {
+                if pages > 1 {
+                    HStack(spacing: 0) {
+                        PageEdgeButton(title: "Previous page", systemImage: "chevron.left", enabled: current > 0 && !loading) { slide(forward: false) }
+                        Color.clear.frame(maxWidth: .infinity).allowsHitTesting(false)
+                        PageEdgeButton(title: loading ? "Loading…" : "Next page", systemImage: "chevron.right",
+                                       enabled: CatalogPaging.canForward(count: count, page: current, hasMore: hasMore, size: pageSize) && !loading) { slide(forward: true) }
+                    }
+                    .padding(.horizontal, -44)
+                }
+            }
+        } else {
+            content(current)
         }
     }
 

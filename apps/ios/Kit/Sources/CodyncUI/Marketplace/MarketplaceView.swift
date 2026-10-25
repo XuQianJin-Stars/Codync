@@ -2,21 +2,15 @@ import CodyncKit
 import SwiftUI
 
 /// Extensions for the bots on one computer (the store in the environment): Agents,
-/// Connectors and Skills, one at a time. Each list turns a page; a connector page past
-/// the rows already loaded fetches the next registry page. Installing happens on that
+/// Connectors and Skills, one at a time. Each list turns a page; a connector page that
+/// isn't full fetches more from the registry (`ConnectorCatalog`). Installing happens on that
 /// computer; each bot turns connectors and skills on in its settings.
 public struct MarketplaceView: View {
     @Environment(BotStore.self) var model
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State var search = ""
-    @State var connectors = MarketplacePage<MarketConnector>()
-    @State var connectorRequest = UUID()
-    @State var connectorQuery = ""
-    /// The registry page after the ones shown; nil at the end.
-    @State var connectorCursor: String?
-    @State var loadingMore = false
+    @State var connectors = ConnectorCatalog<MarketConnector>()
     @State var skills: [MarketSkill] = []
-    @State var loadingConnectors = true
     @State var loadingSkills = true
     @State var error: String?
     @State var installing: MarketConnector?
@@ -28,14 +22,8 @@ public struct MarketplaceView: View {
     @State var addingNode = false
     @State var section = ExtensionSection.agents
     @State var agentPage = 0
-    /// How far the list is dragged, in points. Zero when it is sitting on a page.
-    @State var pageShift: CGFloat = 0
-    @State var listWidth: CGFloat = 0
-    /// Bumps when a new drag starts, so a settle already in flight does not also turn the page.
-    @State var slideToken = 0
-    @State var connectorPage = 0
     @State var skillPage = 0
-    /// Nil until the menu is used, so a phone stays at 5 and a wide layout stays at 10.
+    /// Nil until the menu is used, so a phone stays at 6 and a wide layout stays at 10.
     @State var chosenPageSize: Int?
     @State var showInstalled = false
     @State var showCredentials = false
@@ -80,6 +68,8 @@ public struct MarketplaceView: View {
             do { skills = try await model.marketSkills() } catch { report(error) }
             if !Task.isCancelled { loadingSkills = false }
         }
+        // A size picked from the menu, or one that follows the layout, starts every list over.
+        .onChange(of: pageSize) { _, _ in resetPages() }
         .codyncSheet(item: $installing) { item in
             InstallConnectorSheet(item: item) { Task { await loadConnectors() } }
         }
@@ -111,7 +101,7 @@ public struct MarketplaceView: View {
                         }
                     }
                 }
-                if let error {
+                if let error = error ?? connectors.error {
                     Text(L10n.tr(error)).font(.footnote).foregroundStyle(Palette.danger)
                 }
             }
@@ -119,7 +109,6 @@ public struct MarketplaceView: View {
             .padding(.vertical, 20)
             .frame(maxWidth: 980)
             .frame(maxWidth: .infinity)
-            .onPreferenceChange(PageWidthKey.self) { listWidth = $0 }
         }
         .background(Palette.background)
         .overlay(alignment: .topTrailing) {
@@ -193,7 +182,7 @@ public struct MarketplaceView: View {
                 .textFieldStyle(.plain)
                 .plainTextInput()
                 .onSubmit { Task { await loadConnectors() } }
-                .onChange(of: search) { _, _ in agentPage = 0; skillPage = 0; connectorPage = 0 }
+                .onChange(of: search) { _, _ in resetPages() }
             if !search.isEmpty {
                 Button { search = ""; Task { await loadConnectors() } } label: {
                     Image(systemName: "xmark.circle.fill").foregroundStyle(Palette.tertiary)
@@ -212,26 +201,11 @@ public struct MarketplaceView: View {
     }
 
     private func loadConnectors() async {
-        let request = UUID()
-        connectorRequest = request
-        connectorQuery = query
-        loadingConnectors = true
-        loadingMore = false
-        defer { if connectorRequest == request { loadingConnectors = false } }
-        do {
-            let page = try await model.marketConnectors(search: connectorQuery)
-            guard !Task.isCancelled, connectorRequest == request else { return }
-            connectors.replace(with: page.items)
-            connectorCursor = page.next
-            connectorPage = 0
-            error = nil
-        } catch {
-            guard connectorRequest == request else { return }
-            if error is CancellationError || Task.isCancelled { return }
-            connectors.replace(with: [])
-            connectorCursor = nil
-            self.error = error.localizedDescription
-        }
+        await connectors.load(search: query, fetch: fetchConnectors)
+    }
+
+    private func fetchConnectors(search: String, cursor: String?) async throws -> (items: [MarketConnector], next: String?) {
+        try await model.marketConnectors(search: search, cursor: cursor)
     }
 
     /// A load that SwiftUI cancelled is the next load starting, not a failure to show.
@@ -245,105 +219,55 @@ public struct MarketplaceView: View {
     }
 
     private func canTurn(_ forward: Bool) -> Bool {
-        switch section {
-        case .agents:
-            return inRange(agentPage, forward: forward, count: agents.count, hasMore: false)
-        case .skills:
-            return inRange(skillPage, forward: forward, count: shownSkills.count, hasMore: false)
-        case .connectors:
-            return !loadingMore && !loadingConnectors && inRange(connectorPage, forward: forward, count: connectors.items.count, hasMore: connectorCursor != nil)
+        let (page, count, hasMore) = switch section {
+        case .agents: (agentPage, agents.count, false)
+        case .skills: (skillPage, shownSkills.count, false)
+        case .connectors: (connectors.page, connectors.items.items.count, connectors.hasMore)
         }
-    }
-
-    private func inRange(_ page: Int, forward: Bool, count: Int, hasMore: Bool) -> Bool {
+        if section == .connectors, connectors.loading || connectors.loadingMore { return false }
         let next = page + (forward ? 1 : -1)
-        return next >= 0 && next < CatalogPaging.pageCount(count, size: pageSize, hasMore: hasMore)
+        return CatalogPaging.clamp(page: next, count: count, size: pageSize, hasMore: hasMore) == next
     }
 
-    /// The arrow buttons slide the list over.
+    /// How a page turn from an arrow scrolls the pager.
+    var pageMotion: Animation? { reduceMotion ? nil : Motion.layout }
+
+    /// The arrow buttons turn the page; on a phone the pager scrolls over to it.
     func slide(forward: Bool) {
         guard canTurn(forward) else { return }
-        guard sizeClass == .compact, listWidth > 1, !reduceMotion else {
-            turnPage(forward: forward)
-            return
-        }
-        settle(to: forward ? -listWidth : listWidth, velocity: 0) { turnPage(forward: forward) }
-    }
-
-    private func settle(to target: CGFloat, velocity: CGFloat, commit: @escaping () -> Void) {
-        slideToken += 1
-        let token = slideToken
-        let distance = target - pageShift
-        let initial = abs(distance) > 30 ? Double(velocity / distance) : 0
-        withAnimation(Motion.page(velocity: initial), completionCriteria: .logicallyComplete) {
-            pageShift = target
-        } completion: {
-            guard token == slideToken else { return }
-            var transaction = Transaction()
-            transaction.disablesAnimations = true
-            withTransaction(transaction) {
-                commit()
-                pageShift = 0
-            }
-        }
-    }
-
-    private func turnPage(forward: Bool) {
+        let step = forward ? 1 : -1
         switch section {
-        case .agents:
-            move(&agentPage, count: agents.count, hasMore: false, forward: forward)
-        case .skills:
-            move(&skillPage, count: shownSkills.count, hasMore: false, forward: forward)
-        case .connectors:
-            let next = connectorPage + (forward ? 1 : -1)
-            Task { await showConnectorPage(next) }
+        case .agents: withAnimation(pageMotion) { agentPage += step }
+        case .skills: withAnimation(pageMotion) { skillPage += step }
+        case .connectors: showConnectorPage(connectors.page + step, animated: true)
         }
     }
 
-    private func move(_ page: inout Int, count: Int, hasMore: Bool, forward: Bool) {
-        let next = page + (forward ? 1 : -1)
-        guard next >= 0, next < CatalogPaging.pageCount(count, size: pageSize, hasMore: hasMore) else { return }
-        page = next
+    /// A swipe landed on `page`. The page shows at once; a connector page that isn't full then fills.
+    func swiped(to page: Int) {
+        switch section {
+        case .agents: agentPage = page
+        case .skills: skillPage = page
+        case .connectors: showConnectorPage(page, animated: false)
+        }
     }
 
+    /// The new size starts every list over (`onChange(of: pageSize)`).
     func changePageSize(_ size: Int) {
         chosenPageSize = size
+    }
+
+    private func resetPages() {
         agentPage = 0
-        connectorPage = 0
         skillPage = 0
+        connectors.show(0, size: pageSize)
     }
 
-    func showConnectorPage(_ next: Int) async {
-        guard next >= 0, !loadingMore, !loadingConnectors else { return }
-        if !CatalogPaging.needsFetch(count: connectors.items.count, page: next, size: pageSize) {
-            connectorPage = CatalogPaging.clamp(page: next, count: connectors.items.count, size: pageSize, hasMore: connectorCursor != nil)
-            return
-        }
-        guard connectorCursor != nil else { return }
-        let request = connectorRequest
-        loadingMore = true
-        defer { if connectorRequest == request { loadingMore = false } }
-        var catalog = ConnectorCatalog(items: connectors, cursor: connectorCursor)
-        do {
-            try await catalog.fill(page: next, size: pageSize) { cursor in
-                let page = try await model.marketConnectors(search: connectorQuery, cursor: cursor)
-                guard !Task.isCancelled, connectorRequest == request else { throw CancellationError() }
-                return (page.items, page.next)
-            }
-            guard !Task.isCancelled, connectorRequest == request else { return }
-            connectors = catalog.items
-            connectorCursor = catalog.cursor
-            connectorPage = CatalogPaging.clamp(page: next, count: connectors.items.count, size: pageSize, hasMore: connectorCursor != nil)
-            error = nil
-        } catch is CatalogStall {
-            guard connectorRequest == request else { return }
-            error = "Couldn't load more connectors."
-        } catch {
-            guard connectorRequest == request else { return }
-            report(error)
-        }
+    /// Turns the connector list to `page`; a page that isn't full then fills from the registry.
+    func showConnectorPage(_ page: Int, animated: Bool) {
+        withAnimation(animated ? pageMotion : nil) { connectors.show(page, size: pageSize) }
+        Task { await connectors.fill(size: pageSize, animation: pageMotion, fetch: fetchConnectors) }
     }
-
 }
 
 enum ExtensionSection: String, CaseIterable, Identifiable {

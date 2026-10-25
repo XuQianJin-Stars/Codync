@@ -104,7 +104,12 @@ pub async fn browse_connectors(store: &crate::store::Store, search: &str, cursor
         .filter(|s| seen.insert(s["name"].as_str().unwrap_or_default().to_owned()))
         .filter_map(|s| listing(s, &installed))
         .collect();
-    Ok(json!({"items": items, "nextCursor": next}))
+    Ok(json!({"items": items, "nextCursor": following(cursor, next)}))
+}
+
+/// The registry handing back the cursor it was asked with would page the same rows forever: that ends the list.
+fn following(cursor: &str, next: Option<String>) -> Option<String> {
+    next.filter(|n| n != cursor)
 }
 
 type Page = (Vec<Value>, Option<String>);
@@ -179,5 +184,12 @@ mod tests {
         assert_eq!(title_from_name("com.notion/mcp"), "Notion");
         assert_eq!(title_from_name("com.vercel/vercel-mcp"), "Vercel");
         assert_eq!(title_from_name("io.github.microsoft/playwright-mcp"), "Playwright");
+    }
+
+    #[test]
+    fn a_repeated_cursor_ends_the_list() {
+        assert_eq!(following("a", Some("a".into())), None);
+        assert_eq!(following("a", Some("b".into())), Some("b".into()));
+        assert_eq!(following("", None), None);
     }
 }

@@ -1,18 +1,6 @@
 import CodyncKit
 import SwiftUI
 
-struct MarketSection<Content: View>: View {
-    let title: String
-    @ViewBuilder let content: Content
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text(L10n.tr(title)).font(.headline).foregroundStyle(Palette.text).padding(.leading, 4)
-            content
-        }
-    }
-}
-
 /// Two columns on wide screens, one on a phone.
 struct ItemGrid<Content: View>: View {
     @ViewBuilder let content: Content
@@ -36,23 +24,9 @@ struct AgentCard: View {
 
     var body: some View {
         Button(action: action) {
-            VStack(spacing: 12) {
-                AgentIcon(registry: backend.registry ?? backend.id, size: 34)
-                    .frame(width: 64, height: 64)
-                    .background(Palette.bubbleAgent, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-                VStack(spacing: 2) {
-                    Text(backend.name).font(.subheadline.weight(.semibold)).foregroundStyle(Palette.text).lineLimit(1)
-                    Text(L10n.tr(status))
-                        .font(.caption)
-                        .foregroundStyle(Palette.secondary)
-                        .lineLimit(1)
-                }
-            }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 18)
-            .padding(.horizontal, 10)
-            .background(Palette.bubbleAgent.opacity(hovering ? 0.8 : 0.45), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-            .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+            AgentCardLabel(registry: backend.registry ?? backend.id, name: backend.name, status: L10n.tr(status))
+                .background(Palette.bubbleAgent.opacity(hovering ? 0.8 : 0.45), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
         }
         .buttonStyle(PressScale())
         .onHover { h in withAnimation(Motion.hover) { hovering = h } }
@@ -60,21 +34,35 @@ struct AgentCard: View {
     }
 }
 
-/// The size of an agent tile, with nothing to tap. A short last page keeps a full page of rows, so the bar under it stays put.
-struct AgentCardSpacer: View {
+/// An agent tile's logo, name and status line.
+private struct AgentCardLabel: View {
+    let registry: String?
+    let name: String
+    let status: String
+
     var body: some View {
-        VStack(spacing: 12) {
-            Color.clear.frame(width: 64, height: 64)
+        VStack(spacing: 10) {
+            AgentIcon(registry: registry, size: 30)
+                .frame(width: 56, height: 56)
+                .background(Palette.bubbleAgent, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
             VStack(spacing: 2) {
-                Text(" ").font(.subheadline.weight(.semibold)).lineLimit(1)
-                Text(" ").font(.caption).lineLimit(1)
+                Text(name).font(.subheadline.weight(.semibold)).foregroundStyle(Palette.text).lineLimit(1)
+                Text(status)
+                    .font(.caption)
+                    .foregroundStyle(Palette.secondary)
+                    .lineLimit(1)
             }
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 18)
+        .padding(.vertical, 14)
         .padding(.horizontal, 10)
-        .hidden()
-        .accessibilityHidden(true)
+    }
+}
+
+/// An agent tile's room, with nothing in it. A short last page keeps a full page of rows, so the bar under it stays put.
+struct AgentCardSpacer: View {
+    var body: some View {
+        AgentCardLabel(registry: nil, name: " ", status: " ").hidden().accessibilityHidden(true)
     }
 }
 
@@ -129,26 +117,17 @@ struct MarketRow<Icon: View>: View {
     }
 }
 
-/// The size of a catalog row, with nothing to tap. A short last page keeps a full page of rows.
+/// A catalog row's room, with nothing in it. A short last page keeps a full page of rows.
 struct MarketRowSpacer: View {
     var body: some View {
-        HStack(spacing: 14) {
-            Color.clear.frame(width: 46, height: 46)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(" ").font(.body.weight(.medium)).lineLimit(1)
-                Text(" ").font(.subheadline).lineLimit(1)
-            }
-            Spacer(minLength: 8)
-            Text(" ").font(.subheadline.weight(.semibold)).padding(.horizontal, 16).padding(.vertical, 7)
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
-        .hidden()
-        .accessibilityHidden(true)
+        MarketRow(title: " ", subtitle: " ", added: true) { Color.clear } add: {}
+            .hidden()
+            .accessibilityHidden(true)
     }
 }
 
-/// Previous or next, beside the list on a phone. Gray so it shows on the page, not the white circle that sits inside the bar.
+/// Previous or next, beside the list on a phone: a dark filled circle (the text color, so white in dark mode)
+/// with the chevron in the page's background, faint when there is no page that way.
 struct PageEdgeButton: View {
     let title: String
     let systemImage: String
@@ -158,11 +137,11 @@ struct PageEdgeButton: View {
     var body: some View {
         Button(action: action) {
             Image(systemName: systemImage)
-                .font(.footnote.weight(.semibold))
-                .frame(width: 32, height: 32)
-                .foregroundStyle(enabled ? Palette.text : Palette.tertiary)
-                .background(Palette.bubbleAgent, in: Circle())
-                .opacity(enabled ? 1 : 0.45)
+                .font(.subheadline.weight(.bold))
+                .frame(width: 36, height: 36)
+                .foregroundStyle(Palette.background)
+                .background(Palette.text, in: Circle())
+                .opacity(enabled ? 1 : 0.25)
         }
         .buttonStyle(PressScale())
         .disabled(!enabled)
@@ -292,7 +271,8 @@ struct WebLink: View {
     }
 }
 
-/// Count, page size, previous, current / total, next, and a jump box.
+/// The bar under a list. A phone: the page size and the page number (previous and next sit beside the list).
+/// A wide layout: the count, the page size, previous, current / total, and next.
 struct CatalogPager: View {
     let page: Int
     let count: Int
@@ -301,31 +281,19 @@ struct CatalogPager: View {
     var loading = false
     let go: (Int) -> Void
     let onSize: (Int) -> Void
-    @State private var jump = ""
     @Environment(\.horizontalSizeClass) private var sizeClass
 
     private var pages: Int { CatalogPaging.pageCount(count, size: pageSize, hasMore: hasMore) }
     private var current: Int { CatalogPaging.clamp(page: page, count: count, size: pageSize, hasMore: hasMore) }
-    private var compact: Bool { sizeClass == .compact }
 
     var body: some View {
         Group {
-            if compact {
-                // Previous and next sit beside the list. The capsule keeps the page size and the page number; the jump box drops out when the row cannot fit. No spacers in the measured row.
-                ViewThatFits(in: .horizontal) {
-                    HStack(spacing: 16) {
-                        sizeLabel
-                        fraction
-                        phoneJump
-                    }
-                    .fixedSize(horizontal: true, vertical: false)
-                    HStack(spacing: 12) {
-                        sizeLabel
-                        Spacer(minLength: 12)
-                        fraction
-                    }
+            if sizeClass == .compact {
+                HStack(spacing: 12) {
+                    sizeLabel
+                    Spacer(minLength: 12)
+                    fraction
                 }
-                .frame(maxWidth: .infinity)
                 .padding(.horizontal, 16)
                 .padding(.vertical, 8)
                 .background(Palette.bubbleAgent, in: Capsule())
@@ -341,7 +309,6 @@ struct CatalogPager: View {
             total
             sizePicker
             navigation
-            jumpBox
         }
     }
 
@@ -373,33 +340,6 @@ struct CatalogPager: View {
         }
     }
 
-    private var phoneJump: some View {
-        HStack(spacing: 6) {
-            Text(L10n.tr("Jump to")).foregroundStyle(Palette.secondary)
-            TextField("", text: $jump)
-                .multilineTextAlignment(.center)
-                .textFieldStyle(.plain)
-                .plainTextInput()
-                .keyboardType(.numberPad)
-                .frame(width: 36, height: 28)
-                .background(Palette.background, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-                .onChange(of: jump) { _, next in
-                    let digits = String(next.filter(\.isNumber).prefix(4))
-                    if digits != next { jump = digits }
-                }
-            Button(action: commit) {
-                Text(L10n.tr("Go"))
-                    .font(.footnote.weight(.semibold))
-                    .foregroundStyle(loading ? Palette.tertiary : Palette.text)
-                    .padding(.horizontal, 12)
-                    .frame(height: 28)
-                    .background(Palette.background, in: Capsule())
-            }
-            .buttonStyle(PressScale())
-            .disabled(loading)
-        }
-    }
-
     private var sizePicker: some View {
         HStack(spacing: 6) {
             Text(L10n.tr("Per page")).foregroundStyle(Palette.secondary)
@@ -422,56 +362,27 @@ struct CatalogPager: View {
 
     private var navigation: some View {
         HStack(spacing: 4) {
-            step("Previous page", systemImage: compact ? "chevron.left" : nil, enabled: current > 0 && !loading) { go(current - 1) }
+            step("Previous page", enabled: current > 0 && !loading) { go(current - 1) }
             Text("\(current + 1) / \(pages)")
                 .foregroundStyle(Palette.text)
                 .monospacedDigit()
                 .frame(minWidth: 44)
                 .accessibilityAddTraits(.isSelected)
-            step(loading ? "Loading…" : "Next page", systemImage: compact ? "chevron.right" : nil, enabled: CatalogPaging.canForward(count: count, page: current, hasMore: hasMore, size: pageSize) && !loading) {
+            step(loading ? "Loading…" : "Next page", enabled: CatalogPaging.canForward(count: count, page: current, hasMore: hasMore, size: pageSize) && !loading) {
                 go(current + 1)
             }
         }
     }
 
-    private var jumpBox: some View {
-        HStack(spacing: 6) {
-            Text(L10n.tr("Jump to")).foregroundStyle(Palette.secondary)
-            TextField("", text: $jump)
-                .multilineTextAlignment(.center)
-                .textFieldStyle(.plain)
-                .plainTextInput()
-                .keyboardType(.numberPad)
-                .frame(width: 44, height: 28)
-                .background(Palette.bubbleAgent, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-                .onChange(of: jump) { _, next in
-                    let digits = String(next.filter(\.isNumber).prefix(4))
-                    if digits != next { jump = digits }
-                }
-            step("Go", enabled: !loading) { commit() }
-        }
-    }
-
-    private func commit() {
-        guard let n = Int(jump), n >= 1 else { return }
-        go(n - 1)
-        jump = ""
-    }
-
-    private func step(_ title: String, systemImage: String? = nil, enabled: Bool, action: @escaping () -> Void) -> some View {
+    private func step(_ title: String, enabled: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            Group {
-                if let systemImage {
-                    Image(systemName: systemImage).font(.footnote.weight(.semibold)).frame(width: 28, height: 28)
-                } else {
-                    Text(L10n.tr(title)).padding(.horizontal, 10).padding(.vertical, 6)
-                }
-            }
-            .foregroundStyle(enabled ? Palette.secondary : Palette.tertiary)
-            .contentShape(Rectangle())
+            Text(L10n.tr(title))
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .foregroundStyle(enabled ? Palette.secondary : Palette.tertiary)
+                .contentShape(Rectangle())
         }
         .buttonStyle(PressScale())
         .disabled(!enabled)
-        .accessibilityLabel(L10n.tr(title))
     }
 }

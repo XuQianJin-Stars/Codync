@@ -195,7 +195,7 @@ const MAX_SKILL_FILE: usize = 1_000_000;
 /// One skill file, or nothing when it is over [`MAX_SKILL_FILE`]. Reading stops at the limit.
 async fn skill_file(url: &str) -> Result<Option<Vec<u8>>> {
     let mut response = crate::http().get(url).header("user-agent", UA).timeout(TIMEOUT).send().await?;
-    if response.content_length().is_some_and(|size| size > 1_000_000) {
+    if response.content_length().is_some_and(|size| size > MAX_SKILL_FILE as u64) {
         return Ok(None);
     }
     let mut bytes = Vec::new();
