@@ -71,12 +71,12 @@ async fn tree_entries(repo_path: &str) -> Result<Vec<TreeEntry>> {
     // github.com sometimes answers the first handshake with a non-TLS record. One try
     // then surfaces as the red error under the list, so the catalog tries again.
     let mut last = anyhow!("listing skills on GitHub");
-    for attempt in 0..3 {
+    for attempt in 0u64..3 {
         match fetch_tree_page(&url).await {
             Ok(html) => return parse_tree_entries(&html).context("listing skills on GitHub"),
             Err(e) if attempt < 2 => {
                 last = e;
-                tokio::time::sleep(Duration::from_millis(300 * (attempt as u64 + 1))).await;
+                tokio::time::sleep(Duration::from_millis(300 * (attempt + 1))).await;
             }
             Err(e) => last = e,
         }
