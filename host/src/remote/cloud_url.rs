@@ -102,12 +102,45 @@ fn parse_address(raw: &str) -> Option<Address> {
     }
     let token = match parsed.username() {
         "" => None,
-        name if name.bytes().all(|byte| (0x21..=0x7e).contains(&byte)) => Some(name.to_owned()),
-        _ => return None,
+        name => {
+            let decoded = decode_percent(name)?;
+            if !decoded.bytes().all(|byte| (0x21..=0x7e).contains(&byte)) {
+                return None;
+            }
+            Some(decoded)
+        }
     };
     let host = parsed.host_str()?;
     let port = parsed.port().map_or(String::new(), |port| format!(":{port}"));
     Some(Address { url: format!("{}://{host}{port}", parsed.scheme()), token })
+}
+
+/// `Url::username` leaves percent-encoding in place. The relay compares the decoded secret.
+fn decode_percent(raw: &str) -> Option<String> {
+    let bytes = raw.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut index = 0;
+    while index < bytes.len() {
+        if bytes[index] == b'%' {
+            let hi = hex_digit(*bytes.get(index + 1)?)?;
+            let lo = hex_digit(*bytes.get(index + 2)?)?;
+            out.push((hi << 4) | lo);
+            index += 3;
+        } else {
+            out.push(bytes[index]);
+            index += 1;
+        }
+    }
+    String::from_utf8(out).ok()
+}
+
+const fn hex_digit(byte: u8) -> Option<u8> {
+    match byte {
+        b'0'..=b'9' => Some(byte - b'0'),
+        b'a'..=b'f' => Some(byte - b'a' + 10),
+        b'A'..=b'F' => Some(byte - b'A' + 10),
+        _ => None,
+    }
 }
 
 /// `setCloudUrl`: points this computer at a cloud, or clears the saved URL so the build's cloud
@@ -161,6 +194,11 @@ mod tests {
         );
         assert_eq!(normalize_url("http://127.0.0.1:8787/").as_deref(), Some("http://127.0.0.1:8787"));
         assert_eq!(normalize_url("https://tok@relay.example.com/").as_deref(), Some("https://relay.example.com"));
+        let encoded = parse_address("https://abcdefghijklmnopqrst%40@relay.example.com/").unwrap();
+        assert_eq!(encoded.url, "https://relay.example.com");
+        assert_eq!(encoded.token.as_deref(), Some("abcdefghijklmnopqrst@"));
+        assert!(parse_address("https://bad%2@relay.example.com").is_none());
+        assert!(parse_address("https://has%20space@relay.example.com").is_none());
         assert!(normalize_url("http://example.com/").is_none());
         assert!(normalize_url("https://example.com/path/").is_none());
         assert!(normalize_url("ftp://example.com/").is_none());

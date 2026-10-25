@@ -209,4 +209,9 @@ export class RelayStore {
   deleteExpired(computerId: string, now: number): void {
     this.db.prepare('DELETE FROM mailbox WHERE computer_id = ? AND exp <= ?').run(computerId, now)
   }
+
+  /** Expired mail for every computer, whether or not a room is still open. */
+  deleteExpiredAnywhere(now: number): void {
+    this.db.prepare('DELETE FROM mailbox WHERE exp <= ?').run(now)
+  }
 }

@@ -15,6 +15,7 @@ const MAX_BODY = 64 * 1024
 const MAX_COMPUTERS = 32
 const REGISTER_WINDOW_MS = 60_000
 const REGISTER_LIMIT = 10
+const REJECT_LIMIT = 30
 const PLATFORMS = ['macos', 'linux', 'windows'] as const
 
 /** Equal-length compare. A length mismatch is a miss; the token is not a secret length. */
@@ -22,6 +23,14 @@ function sameToken(given: string, expected: string): boolean {
   const left = Buffer.from(given)
   const right = Buffer.from(expected)
   return left.length === right.length && timingSafeEqual(left, right)
+}
+
+function prune(attempts: number[], at: number): void {
+  let first = attempts[0]
+  while (first !== undefined && at - first >= REGISTER_WINDOW_MS) {
+    attempts.shift()
+    first = attempts[0]
+  }
 }
 
 function jsonError(status: number, code: string, message?: string): Response {
@@ -122,6 +131,8 @@ export async function startRelay(options: {
   maxComputers?: number
   /** New enrollments allowed per minute. A known computer refreshing its row does not count. */
   newRegisterLimit?: number
+  /** Wrong-token attempts allowed per minute. They do not consume `newRegisterLimit`. */
+  rejectedRegisterLimit?: number
 }): Promise<RelayServer> {
   const now = options.now ?? Date.now
   const rooms = new Rooms(options.store, now)
@@ -129,7 +140,9 @@ export async function startRelay(options: {
   const token = options.token ?? ''
   const maxComputers = options.maxComputers ?? MAX_COMPUTERS
   const newRegisterLimit = options.newRegisterLimit ?? REGISTER_LIMIT
+  const rejectedRegisterLimit = options.rejectedRegisterLimit ?? REJECT_LIMIT
   const registerAttempts: number[] = []
+  const rejectedAttempts: number[] = []
   const app = new Hono()
 
   app.get('/health', (c) => c.json({ ok: true }))
@@ -156,11 +169,17 @@ export async function startRelay(options: {
     // and the table stops growing once it is full.
     if (!existing) {
       const at = now()
-      while (registerAttempts.length > 0 && at - registerAttempts[0]! >= REGISTER_WINDOW_MS) registerAttempts.shift()
+      const given = c.req.header('codync-relay-token') ?? ''
+      // A wrong token must not use up the allowance a real computer needs to enroll.
+      if (!token || !sameToken(given, token)) {
+        prune(rejectedAttempts, at)
+        if (rejectedAttempts.length >= rejectedRegisterLimit) return jsonError(429, 'rateLimited')
+        rejectedAttempts.push(at)
+        return jsonError(403, 'forbidden')
+      }
+      prune(registerAttempts, at)
       if (registerAttempts.length >= newRegisterLimit) return jsonError(429, 'rateLimited')
       registerAttempts.push(at)
-      const given = c.req.header('codync-relay-token') ?? ''
-      if (!token || !sameToken(given, token)) return jsonError(403, 'forbidden')
       if (store.countComputers() >= maxComputers) return jsonError(403, 'forbidden')
     }
     store.register({

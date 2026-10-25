@@ -12,7 +12,7 @@ Node.js 22 or newer. The process listens on `127.0.0.1` only. Put TLS and the pu
 cd private-relay
 npm ci
 export CODYNC_PRIVATE_RELAY_DATA=/var/lib/codync-private-relay
-export CODYNC_PRIVATE_RELAY_TOKEN='a long random secret'
+export CODYNC_PRIVATE_RELAY_TOKEN='a-long-random-secret'
 export PORT=8788
 npm start
 ```
@@ -90,7 +90,7 @@ On the computer (not on the VPS), in Codync's Computers settings, turn on Reach 
 codync-host cloud --url https://<token>@relay.example.com
 ```
 
-`--clear-url` forgets the saved address and the token, and uses this build's Codync cloud again. Clearing the Relay address field does the same. Each computer keeps its own `identity.json`. Do not copy that file to a second machine; register the second machine on its own, with the token. Both can use this same relay. They are separate rooms.
+Percent-encode a character the URL reserves in that user name (`@` is `%40`). The host decodes it and sends the original token. `--clear-url` forgets the saved address and the token, and uses this build's Codync cloud again. Clearing the Relay address field does the same. Each computer keeps its own `identity.json`. Do not copy that file to a second machine; register the second machine on its own, with the token. Both can use this same relay. They are separate rooms.
 
 Accounts, public routine webhooks and remote screen through the relay are not served (`404`). Direct Wi-Fi and Tailscale screen still work. Push stays on the existing notification worker.
 

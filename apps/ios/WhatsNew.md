@@ -10,9 +10,11 @@ a version without one gets a generic "Bug fixes and improvements" line. Delete o
 
 ### zh-Hant
 - Bot 傳來的圖片會直接顯示在聊天裡，點一下可以放大看，不用先下載。
+- 電腦使用自建中繼時，設定和連線狀態會顯示該中繼的地址，不再一律寫成 Cloudflare。
 
 ### en-US
 - Images a bot sends now show right in the chat; tap one to see it full size, no download needed.
+- When a computer uses a private relay, Settings and connection status show that relay's address instead of always saying Cloudflare.
 
 ## 2.26.1
 

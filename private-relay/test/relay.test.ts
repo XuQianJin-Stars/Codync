@@ -363,7 +363,16 @@ test('a second host replaces the first, and an expired offer is forbidden', asyn
     const replaced = nextClose(first)
     const second = await hostSocket(server)
     assert.equal(await replaced, 4009)
-    second.send(signedAcl(1, [], [{ id: vectors.pairing.offerId, exp: Date.now() - 1000 }]))
+    assert.equal(server.rooms.retained(), 1)
+    second.send(signedAcl(1, [{ dk: vectors.keys.deviceSignPub, grant: null }], []))
+    assert.equal(JSON.parse(await nextMessage(second)).t, 'acl.ok')
+    second.send(JSON.stringify({ t: 'ready' }))
+    const device = await deviceSocket(server)
+    assert.equal(JSON.parse(await nextMessage(device)).online, true)
+    assert.equal((JSON.parse(await nextMessage(second)) as { t: string }).t, 'open')
+    device.close()
+    assert.equal((JSON.parse(await nextMessage(second)) as { t: string }).t, 'close')
+    second.send(signedAcl(2, [], [{ id: vectors.pairing.offerId, exp: Date.now() - 1000 }]))
     assert.equal(JSON.parse(await nextMessage(second)).t, 'acl.ok')
     const path = `/v1/relay/device/${vectors.keys.computerId}?v=1&pair=${vectors.pairing.offerId}`
     const header = await sigHeader(vectors.keys.deviceSignSeed, vectors.keys.deviceSignPub, 'GET', authorityOf(server.url), path, new Uint8Array())
@@ -434,9 +443,26 @@ test('new enrollments stop at the cap and at the per-minute limit', async () => 
       const first = freshKey()
       const second = freshKey()
       assert.equal((await registerAs(limited, first.seed, first.pub, 'nope')).status, 403)
-      const blocked = await registerAs(limited, second.seed, second.pub, TOKEN)
-      assert.equal(blocked.status, 429)
-      assert.equal(limited.store.countComputers(), 0)
+      const enrolled = await registerAs(limited, second.seed, second.pub, TOKEN)
+      assert.equal(enrolled.status, 200)
+      assert.equal(limited.store.countComputers(), 1)
+
+      const blocked = await startRelay({
+        store: new RelayStore(join(dir, 'reject.sqlite')),
+        port: 0,
+        token: TOKEN,
+        rejectedRegisterLimit: 1,
+      })
+      try {
+        const wrong = freshKey()
+        const right = freshKey()
+        const again = freshKey()
+        assert.equal((await registerAs(blocked, wrong.seed, wrong.pub, 'nope')).status, 403)
+        assert.equal((await registerAs(blocked, again.seed, again.pub, 'nope')).status, 429)
+        assert.equal((await registerAs(blocked, right.seed, right.pub, TOKEN)).status, 200)
+      } finally {
+        await blocked.close()
+      }
     } finally {
       await limited.close()
     }
@@ -458,6 +484,24 @@ test('a host that disconnects does not leave its room behind', async () => {
       await new Promise((resolve) => setTimeout(resolve, 10))
     }
     assert.equal(server.rooms.retained(), 0)
+  } finally {
+    await server.close()
+  }
+})
+
+test('expired mailbox rows are deleted when no room is open', async () => {
+  let now = 1_000_000
+  const dir = mkdtempSync(join(tmpdir(), 'codync-private-relay-'))
+  const store = new RelayStore(join(dir, 'relay.sqlite'))
+  const server = await startRelay({ store, port: 0, token: TOKEN, now: () => now })
+  try {
+    store.insertMailbox(vectors.keys.computerId, vectors.keys.deviceSignPub, 'gone', new Uint8Array(128), now + 1_000)
+    store.insertMailbox(vectors.keys.computerId, vectors.keys.deviceSignPub, 'kept', new Uint8Array(128), now + 10_000)
+    assert.equal(server.rooms.retained(), 0)
+    now += 1_000
+    server.rooms.sweep()
+    assert.equal(store.mailboxState(vectors.keys.computerId, vectors.keys.deviceSignPub, 'gone'), null)
+    assert.equal(store.mailboxState(vectors.keys.computerId, vectors.keys.deviceSignPub, 'kept'), 'queued')
   } finally {
     await server.close()
   }

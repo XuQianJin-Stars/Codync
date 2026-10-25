@@ -126,7 +126,7 @@ export class Rooms {
   attachHost(computerId: string, kid: string, ws: WebSocket): void {
     const room = this.room(computerId)
     const previous = room.host
-    if (previous && !previous.left) this.dropHost(room, previous, 4009, 'replaced')
+    if (previous && !previous.left) this.dropHost(room, previous, 4009, 'replaced', true)
     const host: HostConn = { ws, kid, ready: false, heard: this.now(), left: false }
     room.host = host
     ws.on('message', (data, isBinary) => {
@@ -184,10 +184,10 @@ export class Rooms {
     return this.rooms.size
   }
 
-  /** Closes silent sockets and drops expired mailbox items. */
+  /** Closes silent sockets and drops expired mailbox items, including rows whose room is gone. */
   sweep(): void {
     const now = this.now()
-    for (const room of this.rooms.values()) {
+    for (const room of [...this.rooms.values()]) {
       if (room.host && now - room.host.heard > SILENT_TIMEOUT_MS) this.dropHost(room, room.host, 1011, 'timeout')
       for (const device of [...room.devices]) {
         if (device.pair && now >= device.until) this.dropDevice(room, device, 4410, 'pairingExpired')
@@ -195,6 +195,8 @@ export class Rooms {
       }
       this.note(room, expireMailbox(this.store, room.id, now))
     }
+    // A phone can queue mail and leave while the host is offline. That room is no longer in memory.
+    this.store.deleteExpiredAnywhere(now)
   }
 
   private room(id: string): Room {
@@ -364,7 +366,7 @@ export class Rooms {
     }
   }
 
-  private dropHost(room: Room, host: HostConn, code: number, reason: string): void {
+  private dropHost(room: Room, host: HostConn, code: number, reason: string, keepRoom = false): void {
     if (host.left) return
     host.left = true
     const wasReady = host.ready
@@ -379,7 +381,9 @@ export class Rooms {
       }
     }
     this.close(host.ws, code, reason)
-    this.release(room)
+    // Replacing the host assigns the next socket on this same room. Dropping it first would leave
+    // that host, and every later device, on different rooms.
+    if (!keepRoom) this.release(room)
   }
 
   private dropDevice(room: Room, device: DeviceConn, code = 1000, reason = ''): void {

@@ -68,7 +68,7 @@ With the relay off:
 
 You can run a relay yourself and point a computer at it, instead of the Codync relay on Cloudflare. Chat stays end-to-end encrypted either way. The relay still cannot read it.
 
-On the computer, open **Settings → Computers**, turn on **Reach from anywhere**, and set **Relay address** to your relay. Put the registration token in front of the host, as in `https://token@relay.example.com`. Codync keeps the token on that computer and shows only the address afterwards. On a computer without the desktop app:
+On the computer, open **Settings → Computers**, turn on **Reach from anywhere**, and set **Relay address** to your relay. Put the registration token in front of the host, as in `https://token@relay.example.com`. If the token contains a character a URL reserves, such as `@`, percent-encode it (`%40`). Codync decodes that before using the token, and shows only the address afterwards. On a computer without the desktop app:
 
 ```sh
 codync-host cloud --url https://token@relay.example.com
