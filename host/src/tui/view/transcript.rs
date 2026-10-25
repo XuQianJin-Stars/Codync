@@ -2,7 +2,7 @@
 
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
-use std::collections::{BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use super::super::app::{App, Bot, Click, Entry, Exchange, Item, Kind, Outcome, Status, group};
 use super::super::md::{self, truncate, width as w};
@@ -270,6 +270,9 @@ fn entry_lines(out: &mut Built, app: &App, b: &Bot, e: &Entry, info: &HashMap<i6
                 // Another agent took over (or the bot's own came back): `o` shows what it was told.
                 let hint = if unfoldable(e).is_some() { " · o shows what it carried" } else { "" };
                 format!("↪ {}{hint}", e.notice_text())
+            } else if e.call().is_some() {
+                // A voice call's line: its title and length; `o` shows the conversation.
+                format!("{} · o shows the call", e.notice_text())
             } else if app.fallback_owner(&b.id, e).is_some() {
                 format!("{} · A adds a fallback", e.notice_text())
             } else if e.retries() {
@@ -293,22 +296,56 @@ fn entry_lines(out: &mut Built, app: &App, b: &Bot, e: &Entry, info: &HashMap<i6
                 )),
             }
             let folded = unfoldable(e);
-            if app.unfolded.contains(&e.id)
-                && let Some(full) = folded
-            {
-                out.lines.extend(md::wrap(
-                    &[Span::styled(full.to_owned(), t.dim)],
-                    width,
-                    &[Span::raw("   │ ")],
-                    &[Span::raw("   │ ")],
-                ));
+            if app.unfolded.contains(&e.id) {
+                let full = folded.map_or_else(|| call_lines(app, b, e), |f| vec![f.to_owned()]);
+                for text in full {
+                    out.lines.extend(md::wrap(
+                        &[Span::styled(text, t.dim)],
+                        width,
+                        &[Span::raw("   │ ")],
+                        &[Span::raw("   │ ")],
+                    ));
+                }
             }
-            if e.data["connectionRequest"].is_object() || folded.is_some() || e.retries() || e.adds_fallback() {
+            if e.data["connectionRequest"].is_object() || e.unfolds() || e.retries() || e.adds_fallback() {
                 out.messages.push((e.id.clone(), from, out.lines.len()));
             }
         }
         _ => {}
     }
+}
+
+/// A voice call's conversation, oldest first: what was said (the voice's transcript) and the messages the call
+/// carried, which the chat shows only here.
+fn call_lines(app: &App, b: &Bot, line: &Entry) -> Vec<String> {
+    let Some(call) = line.call() else { return Vec::new() };
+    let mut said: Vec<(i64, String)> = line.data["transcript"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .map(|l| {
+            let who = if l["from"] == "user" { "you" } else { "voice" };
+            (l["at"].as_i64().unwrap_or(line.created_at), format!("{who}: {}", l["text"].as_str().unwrap_or_default()))
+        })
+        .collect();
+    let fetched = app.call_entries.get(call);
+    if fetched.is_none() {
+        said.push((i64::MAX, "loading the call…".to_owned()));
+    }
+    // What the host sent of the call (`callEntries`) and the chat loaded here, each entry once (the chat's copy).
+    let held = app.entries.get(&b.id).into_iter().flat_map(|m| m.values());
+    let carried: BTreeMap<i64, &Entry> =
+        fetched.into_iter().flatten().chain(held).filter(|e| e.call() == Some(call)).map(|e| (e.seq, e)).collect();
+    for e in carried.into_values().filter(|e| e.kind == Kind::User || e.is_final()) {
+        let who = match (e.kind, e.data["from"].as_str()) {
+            (Kind::User, Some("voice")) => "voice → bot",
+            (Kind::User, _) => "you",
+            _ => b.name.as_str(),
+        };
+        said.push((e.created_at, format!("{who}: {}", e.text())));
+    }
+    said.sort_by_key(|(at, _)| *at);
+    said.into_iter().map(|(_, text)| text).collect()
 }
 
 /// The full text a chat line folds away: what a handoff carries, or what an agent taking over was told.

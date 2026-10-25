@@ -10,9 +10,12 @@ import {
   type Hello,
   type ReplyQuote,
   type ScreenState,
+  type SharedFile,
   type Usage,
 } from '@shared/models'
+import type { CallLine } from '@shared/calls'
 import type { HostClient } from '../client/host-client'
+import { readSharedFile } from '../../shared/files.ts'
 import { FileDownloads } from './file-downloads'
 import { BotSync, sleep } from './bot-sync'
 
@@ -31,6 +34,8 @@ export interface SendOptions {
   nonce?: string
   pasted?: string[]
   replyTo?: ReplyQuote | null
+  /** The voice call it was said in. */
+  call?: string | null
 }
 
 /** Anything larger is refused by the computer. */
@@ -49,10 +54,11 @@ export class BotStore extends BotSync {
 
   private outgoingFiles = new Map<string, OutgoingFile[]>()
 
-  send(text: string, botId: string, { files = [], nonce = crypto.randomUUID(), pasted = [], replyTo = null }: SendOptions = {}) {
+  send(text: string, botId: string, { files = [], nonce = crypto.randomUUID(), pasted = [], replyTo = null, call = null }: SendOptions = {}) {
     const trimmed = text.trim()
     if ((!trimmed && !files.length) || this.retired) return
     const data: Entry['data'] = { text: trimmed, status: 'sending', clientNonce: nonce }
+    if (call) data.call = call
     if (replyTo) data.replyTo = replyTo
     if (files.length) {
       data.attachments = files.map((f) => ({ id: f.id, name: f.name, size: f.data.length }))
@@ -78,7 +84,7 @@ export class BotStore extends BotSync {
               ids.push(id)
             }
           }
-          return client.send(botId, trimmed, nonce, ids, pasted, replyTo?.id ?? null)
+          return client.send(botId, trimmed, nonce, ids, pasted, replyTo?.id ?? null, call)
         }, true)
         this.outgoingFiles.delete(nonce)
         this.upsert(e)
@@ -88,6 +94,16 @@ export class BotStore extends BotSync {
         this.markLocal(nonce, botId, 'failed')
       }
     })()
+  }
+
+  /** Asks this computer to update itself while it's behind this app (`installHostUpdate`). */
+  requestHostUpdate() {
+    this.hostUpdate = { kind: 'requested', at: Date.now() }
+    this.changed()
+    void this.withLink((c) => c.call('installHostUpdate', {})).catch((error: unknown) => {
+      this.hostUpdate = { kind: 'failed', message: error instanceof Error ? error.message : String(error) }
+      this.changed()
+    })
   }
 
   retry(entry: Entry) {
@@ -117,14 +133,23 @@ export class BotStore extends BotSync {
   }
 
   /** A sent file's bytes: cached after the first fetch (sent files never change). */
-  async attachmentData(fileId: string, botId: string): Promise<Uint8Array | null> {
-    const cached = attachmentCache.get(fileId)
+  attachmentData(fileId: string, botId: string): Promise<Uint8Array | null> {
+    return this.cachedFile(fileId, (client) => client.readUpload(botId, fileId))
+  }
+
+  /** A file a bot shared, read whole and checked: cached after the first fetch (shared files never change). */
+  sharedFileData(file: SharedFile, entryId: string): Promise<Uint8Array | null> {
+    return this.cachedFile(file.id, (client) => readSharedFile(file, (offset) => client.readFile(entryId, file.id, offset)))
+  }
+
+  private async cachedFile(id: string, fetch: (client: HostClient) => Promise<Uint8Array>): Promise<Uint8Array | null> {
+    const cached = attachmentCache.get(id)
     if (cached) return cached
     const client = this.live
     if (!client) return null
     try {
-      const data = await client.readUpload(botId, fileId)
-      cacheAttachment(fileId, data)
+      const data = await fetch(client)
+      cacheAttachment(id, data)
       return data
     } catch {
       return null
@@ -144,8 +169,22 @@ export class BotStore extends BotSync {
     this.perform((c) => c.call('switchBack', { botId }), true)
   }
 
-  logCall(botId: string, seconds: number) {
-    this.perform((c) => c.call('logCall', { botId, seconds }))
+  /** A finished call's line, with the rest of its transcript; the chat then shows the call's messages behind it. */
+  async endCall(botId: string, call: string, seconds: number, lines: CallLine[]) {
+    try {
+      // Safe to repeat: the computer ends a call once.
+      const { entry } = await this.withLink((c) => c.call<{ entry: Entry | null }>('endCall', { botId, callId: call, seconds, lines }), true)
+      if (entry) this.upsert(entry)
+    } catch (error) {
+      this.lastError = error instanceof Error ? error.message : String(error)
+    }
+  }
+
+  /** A call's audio is live: the lead speaks first (only a host with leads marks one, so an older host never gets this). */
+  callStarted(botId: string, call: string) {
+    if (!this.bots.get(botId)?.lead) return
+    // Its opening is the call's, like everything said on it.
+    this.perform((c) => c.call('callStarted', { botId, callId: call }))
   }
 
   screenTakeover(on: boolean) {
@@ -329,6 +368,11 @@ export class BotStore extends BotSync {
     this.changed()
     const draft: GroupDraft = { id: group.id, kind: 'group', name, description: group.description, members, pinned: group.pinned }
     this.perform((c) => c.call('updateBot', draft), true)
+  }
+
+  /** What a voice call carried, from the computer: the loaded chat may not reach back to it. */
+  async callEntries(botId: string, call: string): Promise<Entry[]> {
+    return (await (await this.ready()).call<{ entries: Entry[] }>('callEntries', { botId, callId: call })).entries
   }
 
   /** The history between a bot and one peer. Never upserted: old notices would break `loadOlder`'s paging. */

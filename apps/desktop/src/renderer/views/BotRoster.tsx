@@ -1,7 +1,7 @@
 import { useRef, useState, type ReactNode, type RefObject } from 'react'
 import { createPortal } from 'react-dom'
 import { isGroup, type Bot } from '@shared/models'
-import { moveInOrder } from '../lib/computer-roster'
+import { moveInOrder, rosterBand } from '../lib/computer-roster'
 import { pointerDrag, type Point } from '../lib/pointer-drag'
 import { reduceMotion } from '../lib/theme'
 import { useSlide } from '../lib/slide'
@@ -138,14 +138,14 @@ export function BotRoster({ roster, compact, onContext, openExtensions }: {
     edgeScroll.current = requestAnimationFrame(scrollAtEdge)
   }
 
-  // Any row of the same computer is a target; only rows with the same pin state make room.
+  // Any row of the same computer is a target; only rows in the same band (lead, pinned, the rest) make room.
   const makeRoom = (under: Element | null) => {
     const current = drag.current
     const row = under?.closest<HTMLElement>('[data-roster-row]')
     const item = row && itemsByKey.current.get(row.dataset.rosterRow!)
     if (!current || !row || !item || current.item.ref.computerId !== item.ref.computerId) return
     // A row still sliding out of the way would be hit again where it was.
-    if (item.bot.id === current.item.bot.id || item.bot.pinned !== current.item.bot.pinned || row.getAnimations().length) return
+    if (item.bot.id === current.item.bot.id || rosterBand(item.bot) !== rosterBand(current.item.bot) || row.getAnimations().length) return
     setBotDrag({ ...current, ids: moveInOrder(current.ids, current.item.bot.id, item.bot.id) })
   }
 
@@ -199,7 +199,8 @@ export function BotRoster({ roster, compact, onContext, openExtensions }: {
         onClick={() => app.select(item.ref)}
         onContext={(x, y) => onContext(item.bot, item.store, x, y)}
         lifted={held && lift !== null}
-        drag={pointerDrag({ start: (from) => liftRow(item, siblings, from), over: dragOver, drop, cancel: endDrag })}
+        // The lead stays on top.
+        drag={item.bot.lead ? undefined : pointerDrag({ start: (from) => liftRow(item, siblings, from), over: dragOver, drop, cancel: endDrag })}
       >
         <RosterBotRow item={item} compact={compact} />
       </RosterRow>
@@ -219,7 +220,9 @@ export function BotRoster({ roster, compact, onContext, openExtensions }: {
         previous={roster.sections[index - 1]?.computer.id} next={roster.sections[index + 1]?.computer.id}
         lifted={sectionDrag?.id === computer.id && lift !== null}
         drag={pointerDrag({ start: (from) => liftHeading(store, from), over: headingOver, drop: dropHeading, cancel: endDrag })}
-        move={roster.move} notice={notice}>
+        move={roster.move}>
+        {/* The notice folds with its computer's bots; the heading still reads "Needs update". */}
+        {notice}
         {rows}
         {!items.length && !store.mismatch && !compact ? <div className="computer-roster-empty">{store.shownConnection.kind === 'online' ? 'No bots yet' : store.connectionLabel}</div> : null}
       </ComputerRosterSection>
@@ -263,7 +266,7 @@ function RosterRow({ hovered, lifted, compact, label, title, selected, dragKey, 
   onHover: (on: boolean) => void
   onClick: () => void
   onContext: (x: number, y: number) => void
-  drag: ReturnType<typeof pointerDrag>
+  drag?: ReturnType<typeof pointerDrag>
   children: ReactNode
 }) {
   const ref = useRef<HTMLButtonElement>(null)

@@ -1,7 +1,7 @@
 # Voice calls owned by the host
 
-Status: in progress (owner's go-ahead, 2026-10-25). Supersedes [voice call transcripts](voice-call-transcripts.md),
-which becomes stage 1 of this plan. Current behavior: [voice call](../features/voice-call.md).
+Status: all four stages shipped (stage 1 in 2.25.0, stages 2–4 in 2.26.0; stage 4 without CallKit). Supersedes [voice call transcripts](voice-call-transcripts.md),
+which became stage 1 of this plan. Current behavior: [voice call](../features/voice-call.md#the-call-on-the-host).
 
 A realtime voice model (Gemini Live, OpenAI Realtime) stays in front of the bot: coding agents are text-only and
 slow, so the voice talks and the bot works. What changes is how it hands over. Today each client (iPhone, Android,
@@ -18,7 +18,7 @@ phone / desktop (audio only)        host (all logic)                     the bot
 
 Each stage ships on its own (after-change, merged into `dev`), all clients together.
 
-### 1. The call on the host
+### 1. The call on the host (shipped)
 
 - **`startCall`** `{botId, callId, provider?, model?, voice?, mode}` creates the call and returns everything a
   client needs: the provider credential (realtime and speech modes), the voice's instructions and the tool
@@ -53,7 +53,7 @@ Each stage ships on its own (after-change, merged into `dev`), all clients toget
 - **Memory:** dreaming reads the transcript; the user's spoken lines are the user's own words, the voice's lines and
   the voice-written `send_to_bot` text are context only. A call's user lines count toward the dream trigger.
 
-### 2. The bot's work reaches the call
+### 2. The bot's work reaches the call (shipped)
 
 - The host pushes what the voice should say to the client holding the call (a `call` event, which older clients
   ignore): the bot's final replies, approvals waiting, failures, and short progress while it works ("running the
@@ -63,6 +63,10 @@ Each stage ships on its own (after-change, merged into `dev`), all clients toget
   asks for what's missing, and never invents results.
 
 ### 3. One engine state machine
+
+Shipped in 2.26.0 ([phases and recovery](../features/voice-call.md#phases-and-recovery)). Not covered: the desktop's
+on-device engine on a device change (the speech helper owns its microphone), and OpenAI's WebRTC transport isn't
+replayed end to end in the iPhone and desktop tests (its events are).
 
 - Every client's engines share the phases: connecting → ready (the provider confirmed the session and the microphone
   is delivering audio) → listening / speaking, with the connecting line until ready.
@@ -74,11 +78,15 @@ Each stage ships on its own (after-change, merged into `dev`), all clients toget
 
 ### 4. Platform
 
-- iPhone: CallKit for the call (lock screen, Dynamic Island, AirPods controls, interruptions handled by the system),
-  and the bot's progress in the call's Live Activity.
+Shipped in 2.26.0 ([the call outside the app](../features/voice-call.md#the-call-outside-the-app)), without CallKit:
+it was built, then taken out before release by the owner's decision (2026-10-25); the design and how to bring it back
+are in [CallKit (archived)](callkit.md).
+
+- iPhone: the bot's progress and the call's state in the bot's Live Activity; the app keeps its own audio session.
 - Android: the call's foreground notification shows the same progress.
 
 ## Compatibility
 
-New methods and fields are additive. The phone apps need a host with `startCall`, so they raise `minHost` to the
-release that ships stage 1 (the desktop app bundles its host). `logCall` stays until `minApp` passes it.
+New methods and fields are additive. The apps need a host with `startCall`, so the iPhone, Android and desktop apps
+raise `minHost` to the release that ships stage 1 (a Linux desktop or an SSH computer may run an older host).
+`logCall` stays until `minApp` passes it.

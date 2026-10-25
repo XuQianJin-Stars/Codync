@@ -33,6 +33,7 @@ impl Actor {
             }
             Cmd::BotRequest(request) => self.enqueue(Queued::BotRequest(request), done_tx).await,
             Cmd::BotReply(reply) => self.enqueue(Queued::BotReply(reply), done_tx).await,
+            Cmd::Prompt { text, call } => self.enqueue(Queued::Prompt { text, call }, done_tx).await,
             Cmd::SendToUser { text, reply } => {
                 let _ = reply.send(self.send_to_user(text));
             }
@@ -57,6 +58,12 @@ impl Actor {
                 let _ = self.dreamer.send(memory::DreamEvent::Flush);
             }
             Cmd::SwitchBack => self.switch_back().await,
+            Cmd::CallEnded { call } => {
+                if self.turn_call.as_ref() == Some(&call) {
+                    self.turn_call = None;
+                }
+                let _ = self.dreamer.send(memory::DreamEvent::Flush);
+            }
             Cmd::Reconfigure(base) => {
                 let old = std::mem::replace(&mut self.base, *base);
                 // On its own agent the bot takes the new one; on a fallback it keeps that agent (its step may have
@@ -229,6 +236,17 @@ impl Actor {
                     }
                     continue;
                 }
+                Some(Queued::Prompt { .. }) => {
+                    let Some(Queued::Prompt { text, call }) = self.queue.pop_front() else {
+                        unreachable!("front is a prompt")
+                    };
+                    self.active_prompt = true;
+                    self.prompt_call = call;
+                    if let Err(e) = self.start_turn(main.clone(), &[], &text, false, done_tx).await {
+                        self.start_error(e, done_tx).await;
+                    }
+                    continue;
+                }
                 Some(Queued::Group(_)) => {
                     let Some(Queued::Group(mut turn)) = self.queue.pop_front() else {
                         unreachable!("front is a group turn")
@@ -301,6 +319,7 @@ impl Actor {
         self.relay.carried = None;
         self.turn = None;
         self.reply_hops = None;
+        self.active_prompt = false;
         memory::turns::drop_turn(&self.cfg.id);
         if self.routine_completion.is_none() {
             self.set_inflight(false);

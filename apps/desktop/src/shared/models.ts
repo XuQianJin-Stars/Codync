@@ -1,4 +1,5 @@
 import type { ArtifactCard } from './artifacts'
+import type { CallLine } from './calls'
 
 // Wire types for codync-host (see host/src/api/). Field names match the
 // host's camelCase JSON. Timestamps are epoch milliseconds.
@@ -39,7 +40,9 @@ export interface Bot {
   /** Agents of its chain (its own included) resting now; one whose `until` passed isn't. */
   resting: Resting[]
   pinned: boolean
-  /** Where the user dragged it, lowest first (after pinned bots); ties sort by recent activity. */
+  /** The computer's lead bot, which the host makes: first in the roster, never deleted, hidden or pinned. */
+  lead: boolean
+  /** Where the user dragged it, lowest first within its band (`rosterBand`); ties sort by recent activity. */
   position: number
   hidden: boolean
   notify?: boolean | null
@@ -97,6 +100,7 @@ export function normalizeBot(raw: Partial<Bot> & { id: string }): Bot {
     agentStep: raw.agentStep ?? null,
     resting: raw.resting ?? [],
     pinned: raw.pinned ?? false,
+    lead: raw.lead ?? false,
     position: raw.position ?? 0,
     hidden: raw.hidden ?? false,
     notify: raw.notify ?? null,
@@ -219,6 +223,9 @@ export interface SharedFile extends Attachment { sha256: string }
 export const isImageName = (name: string) =>
   ['png', 'jpg', 'jpeg', 'heic', 'gif', 'webp', 'tiff', 'bmp'].includes(name.split('.').pop()?.toLowerCase() ?? '')
 
+/** A shared image small enough to show in the chat (the whole file is fetched for it). */
+export const showsAsImage = (file: SharedFile) => isImageName(file.name) && file.size <= 20 * 1024 * 1024
+
 export interface ConnectionRequest {
   [key: string]: unknown
 }
@@ -312,6 +319,13 @@ export interface EntryData {
   /** agent: an artifact the bot published (or updated) in this turn. */
   artifact?: ArtifactCard
   callSeconds?: number
+  /** The voice call it was said in (user), answered during (agent), or that it ends (notice): the chat shows those
+   * messages only in the call's conversation. */
+  call?: string
+  /** user: `voice` when a call's voice wrote it for the user (`send_to_bot`). */
+  from?: string
+  /** notice: what was said on a realtime call, oldest first. */
+  transcript?: CallLine[]
 }
 
 export interface Entry {
@@ -449,6 +463,8 @@ export interface Hello {
   signKey?: string
   boxKey?: string
   minApp?: string
+  /** `installHostUpdate` can update this computer (absent before hosts could be updated from a client). */
+  canUpdate?: boolean
   cloud?: string | null
   /** Product analytics on this computer: on unless its owner turned it off. */
   analytics?: boolean
@@ -511,11 +527,15 @@ export type AccountApproval = 'code' | 'auto'
 export interface CloudStatus {
   enabled: boolean
   url?: string | null
+  /** A private relay's registration token is saved (the token itself never leaves the host). */
+  tokenSet?: boolean | null
   registered?: boolean | null
   connected?: boolean | null
   owner?: CloudOwner | null
   lastError?: string | null
   approval?: AccountApproval | null
+  /** Whose relay: a `private` one has no account, access requests or relayed screen. Absent from older hosts (always Codync's). */
+  relay?: 'codync' | 'private' | null
 }
 
 export interface ClaimSignature {

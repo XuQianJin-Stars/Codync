@@ -24,7 +24,7 @@ pub use library::{ArtifactTitles, LibraryItem};
 pub use memory::{MemoryMode, MemorySheet, Scroll, Section};
 pub use pages::Page;
 pub use skill::SkillSheet;
-pub use when::{complete_zone, local_zone};
+pub use when::complete_zone;
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use serde_json::{Value, json};
@@ -54,6 +54,8 @@ pub enum Reply {
         bot: String,
         peer: String,
     },
+    /// A voice call's own messages, by call id.
+    CallEntries(String),
     Registry {
         more: bool,
     },
@@ -128,6 +130,16 @@ pub enum Tab {
 
 pub const TABS: [(Tab, &str); 3] = [(Tab::Agents, "Agents"), (Tab::Connectors, "Connectors"), (Tab::Skills, "Skills")];
 
+impl Tab {
+    pub(in crate::tui) fn index(self) -> usize {
+        match self {
+            Self::Agents => 0,
+            Self::Connectors => 1,
+            Self::Skills => 2,
+        }
+    }
+}
+
 pub struct Market {
     pub tab: Tab,
     pub query: Editor,
@@ -139,6 +151,9 @@ pub struct Market {
     pub loading: bool,
     pub cursor: usize,
     pub error: Option<String>,
+    /// Page index on Agents, Connectors, then Skills.
+    pub pages: [usize; 3],
+    pub page_size: usize,
 }
 
 pub enum Row<'a> {
@@ -148,9 +163,18 @@ pub enum Row<'a> {
     Installed(&'a Value),
     Custom,
     Registry(&'a Value),
-    More,
     OwnSkill(&'a Value),
     Skill(&'a Value),
+}
+
+/// One page of the open marketplace tab.
+pub struct MarketPage<'a> {
+    /// The rows every page starts with (Add Node.js, what's installed, Custom connector), then this page's catalog rows.
+    pub rows: Vec<Row<'a>>,
+    /// Catalog rows on the tab, without the ones every page starts with.
+    pub count: usize,
+    pub page: usize,
+    pub pages: usize,
 }
 
 pub struct AgentSetup {
@@ -245,6 +269,11 @@ fn newline(k: KeyEvent) -> bool {
 impl App {
     fn sheet(&self, method: &'static str, body: Value, r: Reply) {
         self.call(method, body, After::Sheet(r));
+    }
+
+    /// Loads what voice call `call` in `bot`'s chat carried, for its unfolded conversation.
+    pub(in crate::tui) fn fetch_call(&self, bot: &str, call: &str) {
+        self.sheet("callEntries", json!({"botId": bot, "callId": call}), Reply::CallEntries(call.to_owned()));
     }
 
     // ---------- a message's actions ----------

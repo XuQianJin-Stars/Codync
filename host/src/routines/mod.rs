@@ -11,7 +11,7 @@ mod retry;
 mod runner;
 mod schedule;
 pub use runner::start;
-pub use schedule::Trigger;
+pub use schedule::{Trigger, local_zone};
 
 use crate::{
     LockExt,
@@ -362,8 +362,9 @@ impl Routines {
         })
     }
 
-    /// The routine's webhook: the public URL through the Codync cloud (when it's on), the
-    /// local one, and the key. `rotate` replaces the key first, cutting off the old one.
+    /// The routine's webhook: the public URL through the Codync cloud (when it's on; a private
+    /// relay doesn't deliver them), the local one, and the key. `rotate` replaces the key first,
+    /// cutting off the old one.
     pub fn credentials(&self, hub: &Hub, bot: &str, id: &str, rotate: bool) -> Result<Value> {
         if rotate {
             self.change(&hub.store, |s| {
@@ -387,7 +388,8 @@ impl Routines {
                 .clone()
         };
         let cloud = hub.cloud.status();
-        let url = crate::remote::cloud::url(&hub.store)
+        let url = crate::remote::cloud::codync_url(hub)
+            .ok()
             .map(|base| format!("{}/v1/hooks/{}/{id}", base.trim_end_matches('/'), hub.identity.computer_id()));
         Ok(json!({
             "url": url,

@@ -1,6 +1,7 @@
 //! TUI state and everything that changes it: host events, keys, mouse, replies.
 
 mod analytics;
+mod bot;
 mod editor;
 mod events;
 mod exchange;
@@ -15,9 +16,10 @@ mod slash;
 mod steps;
 mod ui;
 
+pub use bot::{AgentModel, Bot, ModelOption, OwnMemory};
 pub use editor::Editor;
 pub use exchange::{ConversationRow, Exchange, Item, Outcome, conversation, group, rows};
-pub use model::{After, AgentModel, Bot, Entry, Kind, Mark, ModelOption, Msg, OwnMemory, Status};
+pub use model::{After, Entry, Kind, Mark, Msg, Status};
 pub use slash::SlashAction;
 pub(super) use steps::{running_turn, working_steps};
 pub use ui::{
@@ -102,6 +104,8 @@ pub struct App {
     pub pick: Option<String>,
     /// Chat lines showing their full text: a handoff (`o` on the picked line).
     pub unfolded: HashSet<String>,
+    /// Voice calls' own messages, by call id (`callEntries`): the chat loaded here may not reach back to them.
+    pub call_entries: HashMap<String, Vec<Entry>>,
     pub market: (Vec<Toggle>, Vec<Toggle>),
     /// Installed connectors and skills as the host lists them.
     pub plugins: (Vec<Value>, Vec<Value>),
@@ -174,6 +178,7 @@ impl App {
             reply: None,
             pick: None,
             unfolded: HashSet::new(),
+            call_entries: HashMap::new(),
             market: (vec![], vec![]),
             plugins: (vec![], vec![]),
             models: HashMap::new(),
@@ -197,12 +202,12 @@ impl App {
 
     // ---------- derived ----------
 
-    /// Roster order: pinned first, then where the user put them, then most recent (same as the phone).
+    /// Roster order: the lead, pinned bots, then where the user put them, then most recent (same as the phone).
     pub fn roster(&self) -> Vec<&Bot> {
         let mut v: Vec<&Bot> = self.bots.values().filter(|b| !b.hidden).collect();
         v.sort_by(|a, b| {
-            b.pinned
-                .cmp(&a.pinned)
+            a.band()
+                .cmp(&b.band())
                 .then(a.position.cmp(&b.position))
                 .then(b.last_at.cmp(&a.last_at))
                 .then(a.name.cmp(&b.name))
@@ -231,6 +236,10 @@ impl App {
     /// A chat's entries, in display order.
     pub fn lane(&self, bot: &str) -> Vec<&Entry> {
         let mut v: Vec<&Entry> = self.entries.get(bot).map(|m| m.values().collect()).unwrap_or_default();
+        // What a voice call carries shows behind its line (`o`), on whichever device the call is: the host writes the
+        // line when the call ends, or when its app went away. A file or an artifact the bot sent stays, to be opened.
+        let opens = |e: &Entry| e.artifact().is_some() || e.data["files"].as_array().is_some_and(|f| !f.is_empty());
+        v.retain(|e| e.kind == Kind::Notice || e.call().is_none() || opens(e));
         // A message sent mid-turn belongs after that turn's reply.
         v.sort_by_key(|e| (e.turn, e.seq));
         v
