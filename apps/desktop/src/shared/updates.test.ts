@@ -131,8 +131,11 @@ test('the app relaunched by a chosen restart opens its own bundle once to come f
 
 test('latest version records the last check without downloading or stopping the host', async () => {
   const f = updaterFixture()
+  let upToDate = 0
+  f.updates.on('upToDate', () => upToDate++)
   f.updates.check()
   await f.emit('update-not-available')
+  assert.equal(upToDate, 1, 'the check the person asked for says so')
   assert.equal(f.updates.state.checking, false)
   assert.equal(f.updates.state.availableVersion, null)
   assert.equal(f.preferences.get('updatesLastCheck'), f.updates.state.lastCheck)
@@ -141,8 +144,11 @@ test('latest version records the last check without downloading or stopping the 
 
 test('a latest release whose build is still uploading counts as up to date, not an error', async () => {
   const f = updaterFixture()
+  let upToDate = 0
+  f.updates.on('upToDate', () => upToDate++)
   f.updates.check()
   await f.emit('error', Object.assign(new Error('Cannot find latest-mac.yml in the latest release artifacts'), { code: 'ERR_UPDATER_CHANNEL_FILE_NOT_FOUND' }))
+  assert.equal(upToDate, 1)
   assert.equal(f.updates.state.error, null)
   assert.equal(f.updates.state.checking, false)
   assert.equal(f.updates.state.availableVersion, null)
@@ -237,9 +243,12 @@ test('failed preparation cancels Quit and reports a retryable error', async () =
 
 test('automatic checks respect opt-out and run daily after the startup check', async () => {
   const f = updaterFixture()
+  let upToDate = 0
+  f.updates.on('upToDate', () => upToDate++)
   await f.tick(30_000)
   assert.equal(f.calls.check, 1)
   await f.emit('update-not-available')
+  assert.equal(upToDate, 0, 'scheduled checks stay silent')
   f.advance(3600_000)
   await f.tick(3600_000)
   assert.equal(f.calls.check, 1)

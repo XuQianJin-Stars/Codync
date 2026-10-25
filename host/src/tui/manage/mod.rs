@@ -24,7 +24,7 @@ pub use library::{ArtifactTitles, LibraryItem};
 pub use memory::{MemoryMode, MemorySheet, Scroll, Section};
 pub use pages::Page;
 pub use skill::SkillSheet;
-pub use when::{complete_zone, local_zone};
+pub use when::complete_zone;
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use serde_json::{Value, json};
@@ -54,6 +54,8 @@ pub enum Reply {
         bot: String,
         peer: String,
     },
+    /// A voice call's own messages, by call id.
+    CallEntries(String),
     Registry {
         more: bool,
     },
@@ -267,6 +269,11 @@ fn newline(k: KeyEvent) -> bool {
 impl App {
     fn sheet(&self, method: &'static str, body: Value, r: Reply) {
         self.call(method, body, After::Sheet(r));
+    }
+
+    /// Loads what voice call `call` in `bot`'s chat carried, for its unfolded conversation.
+    pub(in crate::tui) fn fetch_call(&self, bot: &str, call: &str) {
+        self.sheet("callEntries", json!({"botId": bot, "callId": call}), Reply::CallEntries(call.to_owned()));
     }
 
     // ---------- a message's actions ----------

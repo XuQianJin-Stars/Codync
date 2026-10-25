@@ -92,17 +92,11 @@ extension BotStore {
             catchUpRev = hostRev
             bump(rev)
         case let .bot(bot):
-            let neededInput = bots[bot.id]?.needsInput == true
             bots[bot.id] = bot
             bump(bot.rev)
             onBotUpdated?(bot)
             onRosterChanged?()
             if bot.unread > 0 { acknowledgeVisibleConversations(bot.id) }
-            if bot.needsInput && !neededInput {
-                for call in Array(voiceCalls.values) where call.botId == bot.id {
-                    call.announce("\(bot.name) needs your approval in the chat.")
-                }
-            }
         case let .botDeleted(id, r):
             removeComposerDrafts(for: id)
             bots[id] = nil
@@ -116,20 +110,15 @@ extension BotStore {
                 bump(e.rev)
                 break
             }
-            let known = entries[e.botId]?.first(where: { $0.id == e.id })
             upsert(e)
             if let card = e.data.artifact { artifacts.announce(card) }
             bump(e.rev)
             acknowledgeVisibleConversations(e.botId, entry: e)
-            let calls = Array(voiceCalls.values).filter { $0.botId == e.botId && e.rev > $0.startRev }
-            if e.kind == "agent", e.data.final == true, known?.data.final != true, let text = e.data.text {
-                calls.forEach { $0.speak(spokenReply(e, text)) }
-            }
-            // A group has no status of its own: its members' approvals arrive as cards.
-            if e.kind == "permission", known == nil, e.data.status == "pending", bots[e.botId]?.isGroup == true {
-                let name = e.data.author.flatMap { bots[$0]?.name } ?? "A bot"
-                calls.forEach { $0.announce("\(name) needs your approval in the chat.") }
-            }
+        case let .call(cue):
+            // The computer decides what the voice hears; this device hands each cue over once.
+            guard let id = UUID(uuidString: cue.call), let call = voiceCalls[id], cue.seq > heardCues[id, default: 0] else { break }
+            heardCues[id] = cue.seq
+            call.hear(cue)
         case let .usage(u):
             setUsage(u)
         case let .screen(s):
@@ -152,12 +141,6 @@ extension BotStore {
             }
         }
         scheduleSave()
-    }
-
-    /// In a group, a reply is said with its speaker's name.
-    private func spokenReply(_ e: Entry, _ text: String) -> String {
-        guard bots[e.botId]?.isGroup == true, let name = e.data.author.flatMap({ bots[$0]?.name }) else { return text }
-        return "\(name): \(text)"
     }
 
     private func resetMirror() {

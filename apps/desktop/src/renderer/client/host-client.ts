@@ -11,6 +11,7 @@ import {
   type Usage,
 } from '@shared/models'
 import type { Artifact, ArtifactChunk, LibraryItem } from '@shared/artifacts'
+import { parseCallCue, type CallCue } from '@shared/calls'
 
 /** How a client reaches a host API. Only loopback today: the computer's own host or an SSH tunnel. */
 export type HostRoute = 'loopback' | 'direct' | 'relay'
@@ -67,11 +68,13 @@ export type HostEvent =
   | { type: 'botDeleted'; id: string; rev: number }
   | { type: 'entry'; entry: Entry }
   | { type: 'usage'; usage: Usage }
-  /** An artifact was published, updated or renamed (not part of catch-up: apps fetch the `library` when they show it). */
+  /** An artifact was published, updated or renamed (the catch-up replays it too). */
   | { type: 'artifact'; artifact: Artifact }
   | { type: 'screen'; screen: ScreenState }
   | { type: 'accessRequests'; requests: AccessRequest[] }
   | { type: 'cloud'; cloud: CloudStatus }
+  /** For the voice of a call in this app (only the computer's own apps receive this computer's calls' cues). */
+  | { type: 'call'; cue: CallCue }
   | { type: 'resync' }
   /** An event this app version couldn't read (host newer/older than the app). */
   | { type: 'undecodable'; kind: string }
@@ -118,6 +121,10 @@ export function parseEvent(line: string): HostEvent | null {
       return { type, requests: (raw.requests as AccessRequest[]) ?? [] }
     case 'cloud':
       return raw.cloud ? { type, cloud: raw.cloud as CloudStatus } : null
+    case 'call': {
+      const cue = parseCallCue(raw)
+      return cue ? { type, cue } : null
+    }
     case 'resync':
       return { type }
     default:
@@ -172,8 +179,9 @@ export class HostClient {
 
   /** `pasted`: what the user pasted rather than typed, which memory never takes as their own words. `replyTo`: the
    * chat message this one replies to. */
-  async send(botId: string, text: string, clientNonce: string, attachments: string[] | null, pasted: string[] = [], replyTo: string | null = null) {
-    return (await this.call<{ entry: Entry }>('send', { botId, text, clientNonce, attachments, ...(pasted.length ? { pasted } : {}), ...(replyTo ? { replyTo } : {}) })).entry
+  /** `call`: the voice call it was said in (on-device or speech to text). */
+  async send(botId: string, text: string, clientNonce: string, attachments: string[] | null, pasted: string[] = [], replyTo: string | null = null, call: string | null = null) {
+    return (await this.call<{ entry: Entry }>('send', { botId, text, clientNonce, attachments, ...(pasted.length ? { pasted } : {}), ...(replyTo ? { replyTo } : {}), ...(call ? { call } : {}) })).entry
   }
 
   /** Bytes per `upload` call: base64 of it stays well under the channel's 1 MiB message. */

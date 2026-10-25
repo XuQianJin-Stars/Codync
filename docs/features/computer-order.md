@@ -41,10 +41,11 @@ The order never leaves the device: the cloud stores no computer order.
 
 A computer's bots (and group chats) keep the order the user drags them into, on every
 device: the host stores it as each bot's `position` (`reorderBots`, `host/src/hub/order.rs`)
-and syncs it like any bot change. Pinned bots stay above the rest, and a bot moves only
-among bots with the same pin state. Until a computer's bots are first arranged, every
+and syncs it like any bot change. Every client sorts in bands: the [lead bot](lead-bot.md)
+first (it can't be dragged, and nothing drops above it), then pinned bots, then the rest;
+a bot moves only within its band. Until a computer's bots are first arranged, every
 position is 0 and they sort by recent activity; after that they stay put and a new bot
-appears on top. Hidden bots keep their position for when they return.
+appears at the top of its band. Hidden bots keep their position for when they return.
 
 - **iPhone:** touch and hold a row, then drag it. The roster is a `List` with its styling
   removed, so the system does the reordering: holding still opens the row's menu, and dragging

@@ -255,19 +255,27 @@ struct BotListView: View {
             Button(L10n.tr("Move up")) { withAnimation(Motion.reduced(Motion.layout, reduceMotion)) { store.move(bot.id, by: -1) } }
             Button(L10n.tr("Move down")) { withAnimation(Motion.reduced(Motion.layout, reduceMotion)) { store.move(bot.id, by: 1) } }
         }
+        // The lead stays on top.
+        .moveDisabled(bot.lead)
         .contextActions {
-            var items = [MenuItem(bot.pinned ? "Unpin" : "Pin", icon: bot.pinned ? "pin.slash" : "pin") { store.setPinned(bot, !bot.pinned) }]
+            // The lead is always on top and always there: no pin, hide or delete.
+            var items = bot.lead ? [] : [MenuItem(bot.pinned ? "Unpin" : "Pin", icon: bot.pinned ? "pin.slash" : "pin") { store.setPinned(bot, !bot.pinned) }]
             if !bot.isGroup {
                 items.append(MenuItem("New session", icon: "arrow.counterclockwise") { confirmNewSession = item })
             }
-            return items + [
+            items += [
                 bot.isGroup
                     ? MenuItem("Edit group", icon: "person.2") { editingGroup = GroupTarget(computerId: item.ref.computerId, group: bot) }
                     : MenuItem("Edit profile", icon: "pencil") { editing = EditTarget(computerId: item.ref.computerId, draft: BotDraft(bot)) },
                 MenuItem("Mark as read", icon: "checkmark.message") { store.markAllRead(bot.id) },
-                MenuItem("Hide from list", icon: "eye.slash") { store.setHidden(bot, true) },
-                MenuItem("Delete", icon: "trash", destructive: true, divider: true) { confirmDelete = item },
             ]
+            if !bot.lead {
+                items += [
+                    MenuItem("Hide from list", icon: "eye.slash") { store.setHidden(bot, true) },
+                    MenuItem("Delete", icon: "trash", destructive: true, divider: true) { confirmDelete = item },
+                ]
+            }
+            return items
         }
     }
 

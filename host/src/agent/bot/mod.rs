@@ -16,6 +16,7 @@
 //! written to the group's transcript; see `group`). A routine run talks in its chat
 //! from a session of its own (see `session`).
 
+mod cmd;
 mod compaction;
 mod fallback;
 mod fast_mode;
@@ -28,6 +29,8 @@ mod tool_entry;
 mod turn;
 mod updates;
 
+pub use cmd::Cmd;
+use cmd::Queued;
 pub(crate) use launch::{launch_commands, select_model, start_agent, system_prompt};
 
 use crate::agent::acp::{self, Acp, Incoming};
@@ -51,82 +54,6 @@ use tokio::sync::mpsc;
 pub enum NoticeStyle {
     Info,
     Error,
-}
-
-pub enum Cmd {
-    RefreshTools,
-    Routine(String),
-    /// The user wrote in the bot's chat.
-    Send {
-        lane: Lane,
-        entry_id: String,
-        text: String,
-    },
-    BotRequest(crate::chat::team::BotRequest),
-    /// How a request this bot sent came out: a turn of its own, with any others that arrive meanwhile.
-    BotReply(crate::chat::team::BotReply),
-    /// `send_message` from the bot's `chat` MCP server: a message for the user, now.
-    SendToUser {
-        text: String,
-        reply: tokio::sync::oneshot::Sender<Result<()>>,
-    },
-    /// `react` from the bot's `chat` MCP server: an emoji on the message the turn answers.
-    React {
-        emoji: String,
-        /// In a room: whose message (see `chat::reactions::in_room`).
-        to: Option<String>,
-        reply: tokio::sync::oneshot::Sender<Result<()>>,
-    },
-    SendFile {
-        path: String,
-        name: Option<String>,
-        cancelled: Arc<std::sync::atomic::AtomicBool>,
-        reply: tokio::sync::oneshot::Sender<Result<()>>,
-    },
-    /// An artifact the bot just published (`chat::artifacts`): its card (the entry's `data`) in the turn's chat. Answers
-    /// the card's entry id.
-    PostArtifact {
-        data: Value,
-        reply: tokio::sync::oneshot::Sender<Result<String>>,
-    },
-    /// Its turn in a group's room turn.
-    Group(GroupTurn),
-    /// The group's room turns stopped: drop its queued turns, stop a running one.
-    CancelGroup {
-        chat: String,
-    },
-    Stop,
-    Permission {
-        entry_id: String,
-        option_id: Option<String>,
-    },
-    /// A Codync tool asks the user before it acts (`chat::manage`), on the agent's kind of approval card.
-    Approve {
-        title: String,
-        detail: String,
-        reply: tokio::sync::oneshot::Sender<bool>,
-    },
-    NewSession,
-    Reconfigure(Box<BotConfig>),
-    /// The user wants the bot's own agent again (`switchBack`).
-    SwitchBack,
-    Shutdown,
-}
-
-enum Queued {
-    Routine(String),
-    User {
-        lane: Lane,
-        entry_id: String,
-        text: String,
-    },
-    BotRequest(crate::chat::team::BotRequest),
-    BotReply(crate::chat::team::BotReply),
-    /// A compaction the host decided on (see `compaction`); `idle` while the user is away.
-    Compact {
-        idle: bool,
-    },
-    Group(GroupTurn),
 }
 
 pub struct BotHandle {
@@ -175,12 +102,15 @@ pub fn spawn(hub: Arc<Hub>, base: BotConfig) -> BotHandle {
         dreamer,
         turn_text: None,
         turn_entries: Vec::new(),
+        turn_call: None,
         turn_memory_revision: String::new(),
         announce: None,
         turn: None,
         queue: VecDeque::new(),
         active_request: None,
         reply_hops: None,
+        active_prompt: false,
+        prompt_call: None,
         seg: Seg::None,
         tools: HashMap::new(),
         plan_entry: None,
@@ -331,6 +261,8 @@ struct Actor {
     turn_text: Option<String>,
     /// The user messages this turn answers (none when it isn't the user's).
     turn_entries: Vec<String>,
+    /// The voice call this turn answers while it lasts: its replies carry it (`chat::calls`).
+    turn_call: Option<String>,
     /// The memory change this turn's notice told the agent about (see `memory::change_notice`).
     turn_memory_revision: String,
     /// A profile update this turn carried, recorded once the agent got it.
@@ -340,6 +272,10 @@ struct Actor {
     active_request: Option<crate::chat::team::BotRequest>,
     /// During a turn that takes bot replies: the hops of their chain (see `chat::team::BotReply`).
     reply_hops: Option<u8>,
+    /// The running turn is one the host started, with no message of the user's (`Cmd::Prompt`).
+    active_prompt: bool,
+    /// The call the next host-started turn opens (`Cmd::Prompt`), whose replies are that call's.
+    prompt_call: Option<String>,
     seg: Seg,
     tools: HashMap<String, String>,
     plan_entry: Option<String>,
@@ -470,6 +406,9 @@ impl Actor {
     /// Adds an entry to the current lane, signed by this bot (a group shows who said it).
     fn add(&self, kind: EntryKind, turn: i64, mut data: Value) -> Option<Entry> {
         data["author"] = self.cfg.id.clone().into();
+        if let (EntryKind::Agent, Some(call)) = (kind, &self.turn_call) {
+            data["call"] = call.clone().into();
+        }
         self.hub.add_entry(&self.lane, kind, turn, &data)
     }
 

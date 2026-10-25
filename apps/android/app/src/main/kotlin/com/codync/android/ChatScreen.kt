@@ -79,6 +79,8 @@ import com.kyant.shapes.Capsule
     var viewing by remember(bot.id) { mutableStateOf<OpenArtifact?>(null) }
     // The bot whose conversation with this one is open.
     var peer by remember(bot.id) { mutableStateOf<String?>(null) }
+    /** The voice call whose conversation is open (its line's entry id). */
+    var callLine by remember(bot.id) { mutableStateOf<String?>(null) }
     var micDenied by remember { mutableStateOf(false) }
     var setupEntry by rememberSaveable { mutableStateOf<String?>(null) }
     var app by remember { mutableStateOf<ComposioApp?>(null) }
@@ -118,7 +120,7 @@ import com.kyant.shapes.Capsule
     }) {
         Transcript(bot, chatState, store, connect, PaddingValues(start = 16.dp, end = 16.dp, top = top + 60.dp,
             bottom = with(density) { composerHeight.toDp() } + 8.dp), indicatorTop = top + 50.dp, openRoutine = openRoutine, reply = reply,
-            addFallback = { details = DetailsRequest(botId = it.id) }, openArtifact = { viewing = it }) { peer = it }
+            addFallback = { details = DetailsRequest(botId = it.id) }, openArtifact = { viewing = it }, openCall = { callLine = it }) { peer = it }
     }
     CodyncDialog("Microphone access is off", micDenied, { micDenied = false },
         message = "Allow the microphone in Android settings to talk to your bot.") {
@@ -136,6 +138,7 @@ import com.kyant.shapes.Capsule
         state.bots.firstOrNull { it.id == open.botId }?.let { owner -> ArtifactViewer(open, owner, state, store) { viewing = null } }
     }
     CodyncSheet(peer, { peer = null }) { BotConversationView(bot, it, state, store) }
+    CodyncSheet(callLine, { callLine = null }) { CallConversationView(bot.id, it, state, store) }
     CodyncSheet(app, { app = null; setupEntry = null }) { ComposioConnectSheet(it, state, store, setupEntry) { store.refreshPlugins() } }
     CodyncSheet(connector, { connector = null; setupEntry = null }) { InstallConnectorSheet(it, state, store, setupEntry) }
 }
@@ -195,9 +198,11 @@ import com.kyant.shapes.Capsule
 /** The messages: all this phone has, earlier ones from the computer near the top, following the newest. */
 @Composable private fun Transcript(bot: Bot, state: AppState, store: AppStore, connect: ConnectionRequestActions, padding: PaddingValues,
     indicatorTop: Dp, openRoutine: (String) -> Unit, reply: (Entry) -> Unit, addFallback: (Bot) -> Unit, openArtifact: (OpenArtifact) -> Unit,
-    openPeer: (String) -> Unit) {
-    val entries = state.entries.filter { it.botId == bot.id && it.isChat }
-    val pending = state.pending.filter { it.botId == bot.id }
+    openCall: (String) -> Unit, openPeer: (String) -> Unit) {
+    // What voice calls carried shows in each call's conversation, not in the chat.
+    val entries = state.entries.filter { it.botId == bot.id && it.isChat }.hidingCalls()
+    // A call's message that failed to send stays here, to be sent again.
+    val pending = state.pending.filter { it.botId == bot.id && (it.call == null || it.status == SendStatus.Failed) }
     val items = chatItems(entries, pending)
     val working = bot.isWorking(bot.id) && state.connection is LinkState.Ready
     val more = bot.id !in state.historyComplete
@@ -218,6 +223,9 @@ import com.kyant.shapes.Capsule
                     val routine = item.entry.data.text("routineId").takeIf { item.entry.kind == "notice" }
                     if (routine != null) RoutineNotice(item.entry, retrying = "retry:" + item.entry.id in state.busy,
                         retry = { store.retryRoutineRun(item.entry) }) { openRoutine(routine) }
+                    else if (item.entry.kind == "notice" && item.entry.call != null) Box(Modifier.padding(top = 6.dp)) {
+                        CallLineRow(item.entry) { openCall(item.entry.id) }
+                    }
                     else ChatRow(item.entry, item.groupStart, bot, state, store, openTrace = { store.showTrace(true) },
                         // An update card takes the composer's place, so there's nothing to reply with.
                         reply = if (item.entry.isReplyable && state.mismatch == null) { { reply(item.entry) } } else null, connect = connect,

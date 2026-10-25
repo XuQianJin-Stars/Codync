@@ -3,8 +3,8 @@ import CodyncKit
 import SwiftUI
 
 /// A voice call with a bot, as Grok Bot does it: a floating bar over the chat, which stays
-/// readable underneath. What you say goes out as ordinary messages, its final replies are
-/// read aloud, and the chat gets a "Voice chat · 00:16" line when the call ends.
+/// readable underneath. What you say goes out as messages of the call, its final replies are
+/// read aloud, and the call ends as one titled line ("Release plan · 00:16") that opens its conversation.
 struct CallView: View {
     let botId: String
     @Binding var isSpeaking: Bool
@@ -14,6 +14,8 @@ struct CallView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var session: (any VoiceEngine)?
     @State private var callID = UUID()
+    /// The call on the computer, which runs it; set as the call appears.
+    @State private var link: CallLink?
     @State private var startedAt = Date.now
     /// When the current cloud engine started, for this month's minutes.
     @State private var cloudStartedAt: Date?
@@ -24,15 +26,25 @@ struct CallView: View {
     @State private var settings = false
     /// `voice_call_started` went out for this call.
     @State private var reported = false
+    /// Each engine's `voice_call_quality`.
+    @State private var quality = CallQuality()
+    /// The bot's Live Activity showing the call.
+    @State private var activity: CallActivity?
 
     private var bot: Bot? { model.bots[botId] }
+    private var call: String { callID.uuidString }
     private var color: Color { bot.map { AvatarPalette.color($0.avatarColor) } ?? Palette.accent }
 
     var body: some View {
         VStack(spacing: 6) {
             bar
-            if case .failed(let message) = session?.phase {
+            if case .failed(let message, _) = session?.phase {
                 line(message, color: Palette.danger)
+            } else if session?.phase == .interrupted {
+                Button { session?.resume() } label: {
+                    line("Audio paused by another app. Tap to resume.", color: Palette.secondary)
+                }
+                .buttonStyle(.plain)
             } else if let notice {
                 line(notice, color: Palette.secondary)
             }
@@ -42,31 +54,46 @@ struct CallView: View {
         .animation(Motion.reduced(Motion.fade, reduceMotion), value: notice)
         .onAppear {
             startedAt = .now
+            link = CallLink(model: model, botId: botId, call: call)
+            if let bot {
+                let ref = BotReference(accountId: model.storage.accountID, computerId: model.computer.id, botId: botId)
+                activity = CallActivity(bot: bot, computerId: model.computer.id, link: model.storage.botURL(ref),
+                                        toggleMute: { session?.muted.toggle() }, hangUp: { close() })
+            }
             begin(cloud: VoiceSettings.provider)
         }
         .onDisappear {
+            // First, so the connection outlives the engine: the end is sent after the engine's last lines.
+            link?.end(seconds: Int(Date.now.timeIntervalSince(startedAt)))
             session?.end()
             countCloudMinutes()
             isSpeaking = false
             interrupt = nil
             model.endVoiceCall(callID)
-            model.logCall(botId, seconds: Int(Date.now.timeIntervalSince(startedAt)))
+            quality.report()
+            activity?.end()
         }
         .onChange(of: session?.phase) { _, phase in
+            if let phase {
+                quality.phase(phase)
+                activity?.phase(phase)
+            }
             isSpeaking = phase == .speaking
             interrupt = phase == .speaking ? { session?.interrupt() } : nil
             // Counted once audio flows, so it names the engine the call ended up on.
             if phase?.isActive == true, !reported, let session {
                 reported = true
                 Analytics.shared.capture(.voiceCallStarted(session.analyticsName))
+                model.callStarted(botId, call: call)
             }
             // A cloud engine that can't start or drops mid-call hands over to on-device voice.
-            if case .failed(let message) = phase, let provider = session?.provider {
+            if case .failed(let message, _) = phase, let provider = session?.provider {
                 countCloudMinutes()
                 notice = "\(provider.name) isn't available (\(message)). Using on-device voice."
                 begin(cloud: nil)
             }
         }
+        .onChange(of: session?.muted) { _, muted in activity?.muted(muted == true) }
         .onChange(of: settings) { _, open in if !open { switchEngine() } }
         .codyncSheet(isPresented: $settings) { VoiceChatSettingsView() }
     }
@@ -78,7 +105,7 @@ struct CallView: View {
             Task { if let status = try? await client.voiceStatus() { VoiceSettings.remember(status) } }
         }
         engineChoice = VoiceSettings.engineChoice(provider)
-        let op = CallOperator(model: model, botId: botId)
+        guard let link else { return }
         let engine: any VoiceEngine
         if let provider, VoiceSettings.isSpeechMode(provider) {
             let transcribe = VoiceSettings.transcribeModel(provider)
@@ -91,30 +118,31 @@ struct CallView: View {
             engine = CloudSpeechEngine(provider: provider, speech: .init(
                 transcribe: { try await VoiceSettings.inReadersScript(client().voiceTranscribe(provider, model: transcribe, wav: $0)) },
                 speak: { try await client().voiceSpeak(provider, model: speechModel, voice: voice, text: $0) },
-                send: { [model, botId] in model.send($0, to: botId) }
+                send: { [model, botId, call] in model.send($0, to: botId, call: call) }
             ))
+            // The computer keeps the call, though it carries no voice model.
+            Task { _ = try? await link.start("speech", provider: provider) }
             cloudStartedAt = .now
         } else if let provider {
             let chosen = VoiceSettings.model(provider)
             let voice = VoiceSettings.voice(provider)
-            let credential: @MainActor () async throws -> String = { [model] in
-                guard let client = model.client else { throw VoiceError("Not connected to \(model.hostName).") }
-                return try await client.voiceSession(provider, model: chosen, voice: voice)
-            }
             engine = switch provider {
-            case .openAI: OpenAIRealtimeEngine(credential: credential, op: op)
-            case .gemini: GeminiLiveEngine(model: chosen, voice: voice, credential: credential, op: op)
+            case .openAI: OpenAIRealtimeEngine(model: chosen, voice: voice, link: link)
+            case .gemini: GeminiLiveEngine(model: chosen, voice: voice, link: link)
             }
             cloudStartedAt = .now
         } else {
-            engine = OnDeviceEngine { [model, botId] in model.send($0, to: botId) }
+            engine = OnDeviceEngine { [model, botId, call] in model.send($0, to: botId, call: call) }
+            Task { _ = try? await link.start("device") }
         }
-        engine.onActivityChanged = { [weak engine, model, botId, callID] active in
+        quality.begin(engine.analyticsName)
+        (engine as? GeminiLiveEngine)?.onStall = { [quality] in quality.stalled() }
+        engine.onActivityChanged = { [weak engine, model, callID] active in
             if active {
-                model.beginVoiceCall(callID, botId: botId,
-                                     speak: { [weak engine] in engine?.speak(reply: $0) },
-                                     announce: { [weak engine] in engine?.announce($0) },
-                                     end: { [weak engine] in engine?.end() })
+                model.beginVoiceCall(callID, hear: { [weak engine, activity] cue in
+                    engine?.hear(cue)
+                    activity?.heard(cue)
+                }, end: { [weak engine] in engine?.end() })
             } else {
                 model.endVoiceCall(callID)
             }
@@ -156,7 +184,7 @@ struct CallView: View {
         HStack(spacing: 10) {
             avatar
             LevelDots(level: session?.level ?? 0, speaking: session?.phase == .speaking,
-                      working: bot?.isWorking == true, connecting: (session?.phase ?? .starting) == .starting,
+                      working: bot?.isWorking == true, connecting: session?.phase.isConnecting ?? true,
                       color: color, reduceMotion: reduceMotion)
                 .frame(minWidth: Self.dotsWidth, maxWidth: Self.dotsMaxWidth, minHeight: Self.dotsHeight, maxHeight: Self.dotsHeight)
                 .accessibilityLabel(statusText)
@@ -169,7 +197,9 @@ struct CallView: View {
             }
             round("Call settings", "gearshape") { settings = true }
             let muted = session?.muted == true
-            round(muted ? "Unmute" : "Mute", muted ? "mic.slash" : "mic", on: muted) { session?.muted.toggle() }
+            round(muted ? "Unmute" : "Mute", muted ? "mic.slash" : "mic", on: muted) {
+                session?.muted.toggle()
+            }
             Button(action: close) {
                 Image(systemName: "xmark")
                     .font(.system(size: Self.iconSize, weight: .semibold))
@@ -228,6 +258,8 @@ struct CallView: View {
     private var statusText: String {
         switch session?.phase {
         case .starting, nil: "Connecting"
+        case .reconnecting: "Reconnecting"
+        case .interrupted: "Paused"
         case .speaking: "Speaking"
         case .failed: "Can't listen"
         case .listening where session?.muted == true: "Muted"

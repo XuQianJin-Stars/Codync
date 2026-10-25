@@ -1,9 +1,9 @@
 # Voice call transcripts
 
-Status: planned (owner's request, 2026-10-25). Today a realtime call (OpenAI Realtime, Gemini Live) keeps only what
-the voice model forwarded with `send_to_bot` and the bot's replies; the rest of the conversation is lost, so the bot
-and its memory never see it, and the chat gets a bare "Voice chat · 00:26" line. Current behavior:
-[voice call](../features/voice-call.md), [context and memory](../features/context-and-memory.md).
+Status: superseded and shipped as stage 1 of [voice calls owned by the host](voice-architecture.md) (2.25.0):
+transcripts, the titled call line, hidden call messages and dreaming over calls, with the host running the call.
+Current behavior: [voice call](../features/voice-call.md#the-call-on-the-host). The original plan stays below for
+the record.
 
 ## Goal
 

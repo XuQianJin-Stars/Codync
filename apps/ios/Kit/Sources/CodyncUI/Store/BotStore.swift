@@ -109,16 +109,17 @@ public final class BotStore {
     var streamTask: Task<Void, Never>?
     var eventsTask: Task<Void, Never>?
     var isActive = true
+    /// A call's audio: what the computer tells its voice (`CallCue`), and its end.
     struct VoiceCall {
-        let botId: String
-        let startRev: Int64
-        let speak: @MainActor (String) -> Void
-        /// A notice from the computer (approval needed), as opposed to the bot's reply.
-        let announce: @MainActor (String) -> Void
+        let hear: @MainActor (CallCue) -> Void
         let end: @MainActor () -> Void
     }
     @ObservationIgnored var voiceCalls: [UUID: VoiceCall] = [:]
+    /// The newest cue each call heard (`CallCue.seq`), kept across engine switches: a replayed one isn't said again.
+    @ObservationIgnored var heardCues: [UUID: Int64] = [:]
     @ObservationIgnored var shortcutSends = 0
+    /// Calls whose end is still on its way to the computer.
+    @ObservationIgnored var callEnds = 0
     var saveTask: Task<Void, Never>?
     var rewound = false
     /// Events stayed undecodable after the rewind.
@@ -194,10 +195,10 @@ public final class BotStore {
         return nil
     }
 
-    /// Roster order: pinned first, then where the user dragged them, then most recent activity.
+    /// Roster order: the lead, pinned bots, then where the user dragged them, then most recent activity.
     public var roster: [Bot] {
         bots.values.filter { !$0.hidden }.sorted {
-            if $0.pinned != $1.pinned { return $0.pinned }
+            if $0.band != $1.band { return $0.band < $1.band }
             if $0.position != $1.position { return $0.position < $1.position }
             return $0.lastAt > $1.lastAt
         }

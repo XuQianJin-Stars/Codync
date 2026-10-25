@@ -56,9 +56,11 @@ impl App {
                     }
                 }
             }
+            Reply::CallEntries(call) => {
+                self.call_entries.insert(call, entries_of(&v));
+            }
             Reply::BotChat { bot, peer } => {
-                let entries: Vec<Entry> =
-                    v["entries"].as_array().into_iter().flatten().filter_map(Entry::parse).map(|(_, e)| e).collect();
+                let entries = entries_of(&v);
                 for o in &mut self.overlays {
                     if let Overlay::BotChat(c) = o
                         && c.bot == bot
@@ -232,6 +234,18 @@ impl App {
                 m.skills.get_or_insert_with(Vec::new);
                 m.error = Some(e);
             }),
+            Reply::CallEntries(call) => {
+                // The call's line folds again with nothing kept, so the next `o` asks again.
+                let lines: Vec<String> = self
+                    .entries
+                    .values()
+                    .flat_map(|m| m.values())
+                    .filter(|l| l.unfolds() && l.call() == Some(call.as_str()))
+                    .map(|l| l.id.clone())
+                    .collect();
+                self.unfolded.retain(|id| !lines.contains(id));
+                self.flash(&e);
+            }
             Reply::BotChat { bot, peer } => {
                 for o in &mut self.overlays {
                     if let Overlay::BotChat(c) = o
@@ -341,4 +355,9 @@ impl App {
         }
         list
     }
+}
+
+/// The entries in a host reply (`callEntries`, `botConversation`).
+fn entries_of(v: &Value) -> Vec<Entry> {
+    v["entries"].as_array().into_iter().flatten().filter_map(Entry::parse).map(|(_, e)| e).collect()
 }

@@ -17,7 +17,8 @@ progress bar. A finished download never quits the app by itself: the button beco
 **Restart to update**, and choosing it shows **Restarting…** while the host stops and the
 installer takes over. The relaunched app comes to the front (macOS doesn't activate an app
 the installer relaunches from the background, so a one-shot `updateRelaunchInFront`
-preference asks for it).
+preference asks for it). A check the person starts that finds nothing new opens a
+**You're up to date** dialog in the chat window; scheduled checks stay silent.
 
 While a release is available, an **Update** badge sits right of **Extensions** in the
 chat window's sidebar (`UpdateBadge`). One click restarts into the release

@@ -44,7 +44,7 @@ function reopenAfterInstall() {
   spawn('/bin/sh', ['-c', script, shipIt, bundlePath()], { detached: true, stdio: 'ignore' }).unref()
 }
 
-export class Updates extends EventEmitter {
+export class Updates extends EventEmitter<{ change: []; upToDate: []; setAutoCheck: [on: boolean]; setAutoDownload: [on: boolean] }> {
   state: UpdateState = {
     supported: enabled,
     checking: false,
@@ -145,10 +145,13 @@ export class Updates extends EventEmitter {
     this.set({ checking: false, lastCheck: now, ...change })
   }
 
+  /** A check the person asked for answers even when there's nothing new (`upToDate`). */
   private upToDate() {
     this.installWhenDownloaded = false
+    const asked = this.userInitiated
     this.userInitiated = false
     this.checked({ availableVersion: null })
+    if (asked) this.emit('upToDate')
   }
 
   private failed(error: unknown) {
