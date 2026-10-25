@@ -3,7 +3,7 @@
 use serde_json::{Value, json};
 
 use super::super::app::{After, AgentModel, App, Entry, Overlay, Toggle};
-use super::{MemoryMode, Reply, Shell, open_browser, s};
+use super::{Market, MemoryMode, Reply, Shell, open_browser, s};
 
 impl App {
     pub(in crate::tui) fn on_sheet_reply(&mut self, r: Reply, res: Result<Value, String>) {
@@ -107,22 +107,19 @@ impl App {
                     "Copied a curl command (the cloud is off: this computer only)"
                 });
             }
-            Reply::Registry { more } => {
-                if let Some(Overlay::Market(m)) =
-                    self.overlays.iter_mut().rev().find(|o| matches!(o, Overlay::Market(_)))
-                {
-                    let items = v["items"].as_array().cloned().unwrap_or_default();
-                    if more {
-                        m.registry.extend(items);
-                    } else {
-                        m.registry = items;
-                    }
-                    m.next = v["nextCursor"].as_str().filter(|c| !c.is_empty()).map(str::to_owned);
-                    m.searched.get_or_insert_with(String::new);
-                    m.loading = false;
-                    m.error = None;
+            Reply::Registry { more } => self.with_market(|app, m| {
+                let items = v["items"].as_array().cloned().unwrap_or_default();
+                if more {
+                    m.registry.extend(items);
+                } else {
+                    m.registry = items;
                 }
-            }
+                m.next = v["nextCursor"].as_str().filter(|c| !c.is_empty()).map(str::to_owned);
+                m.searched.get_or_insert_with(String::new);
+                m.loading = false;
+                m.error = None;
+                app.continue_market_page(m);
+            }),
             Reply::Skills => {
                 if let Some(Overlay::Market(m)) =
                     self.overlays.iter_mut().rev().find(|o| matches!(o, Overlay::Market(_)))
@@ -223,15 +220,20 @@ impl App {
                     }
                 }
             }
-            Reply::Registry { .. } | Reply::Skills => {
-                if let Some(Overlay::Market(m)) =
-                    self.overlays.iter_mut().rev().find(|o| matches!(o, Overlay::Market(_)))
-                {
+            Reply::Registry { more } => {
+                let more = *more;
+                self.with_market(|app, m| {
                     m.loading = false;
-                    m.skills.get_or_insert_with(Vec::new);
                     m.error = Some(e);
-                }
+                    if more {
+                        app.settle_connector_page(m);
+                    }
+                });
             }
+            Reply::Skills => self.with_market(|_, m| {
+                m.skills.get_or_insert_with(Vec::new);
+                m.error = Some(e);
+            }),
             Reply::CallEntries(call) => {
                 // The call's line folds again with nothing kept, so the next `o` asks again.
                 let lines: Vec<String> = self
@@ -291,6 +293,19 @@ impl App {
             }
             _ => self.flash(&e),
         }
+    }
+
+    /// Runs `f` on the open marketplace, with the rest of the app readable beside it.
+    fn with_market(&mut self, f: impl FnOnce(&Self, &mut Market)) {
+        let Some(i) = self.overlays.iter().rposition(|o| matches!(o, Overlay::Market(_))) else { return };
+        let overlay = match self.overlays.remove(i) {
+            Overlay::Market(mut m) => {
+                f(self, &mut m);
+                Overlay::Market(m)
+            }
+            other => other,
+        };
+        self.overlays.insert(i, overlay);
     }
 
     /// Loads what every open sheet shows again, after a change.

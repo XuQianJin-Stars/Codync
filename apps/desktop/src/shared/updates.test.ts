@@ -102,6 +102,46 @@ test('the Update badge clicked during an automatic download restarts once it fin
   assert.equal(f.calls.install, 1)
 })
 
+test('another device asking this computer to update downloads the release and restarts into it once no bot is working', async () => {
+  const f = updaterFixture({ prefs: { updatesAutoDownload: false } })
+  let upToDate = 0
+  f.updates.on('upToDate', () => upToDate++)
+  f.host.emit('updateRequested')
+  await f.emit('update-not-available')
+  assert.equal(upToDate, 0, 'nobody at this computer asked, so nothing says up to date')
+  f.host.emit('updateRequested')
+  assert.equal(f.calls.check, 2)
+  await f.emit('update-available', release)
+  assert.equal(f.calls.download, 1, 'downloads even with automatic downloads off')
+  f.behavior.focused = true
+  f.behavior.hostIdle = false
+  await f.emit('update-downloaded', release)
+  await f.tick(30_000)
+  assert.equal(f.calls.prepare + f.calls.install, 0, 'a working bot is never stopped')
+  f.behavior.hostIdle = true
+  await f.tick(30_000)
+  assert.equal(f.calls.install, 1, "doesn't wait for the person at this computer")
+  assert.notEqual(f.preferences.get('updateRelaunchInFront'), true, 'the app comes back in the background')
+
+  const staged = updaterFixture()
+  staged.behavior.focused = true
+  await staged.emit('update-downloaded', release)
+  staged.host.emit('updateRequested')
+  await staged.tick(30_000)
+  assert.equal(staged.calls.check, 0)
+  assert.equal(staged.calls.install, 1)
+
+  const lapsed = updaterFixture()
+  lapsed.behavior.focused = true
+  lapsed.behavior.hostIdle = false
+  await lapsed.emit('update-downloaded', release)
+  lapsed.host.emit('updateRequested')
+  lapsed.advance(10 * 60_000)
+  lapsed.behavior.hostIdle = true
+  await lapsed.tick(30_000)
+  assert.equal(lapsed.calls.install, 0, 'a request that lapsed waits for the person again')
+})
+
 test('an older copy opened while the installer runs quits and reopens the app once it stops', () => {
   const recent = { version: release.version, at: Date.UTC(2026, 9, 9) - 60_000 }
   for (const [name, marker, job] of [
