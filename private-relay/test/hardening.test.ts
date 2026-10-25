@@ -209,7 +209,7 @@ test('the mailbox refuses an oversized blob and a device past its count', async 
 })
 
 test('a signature made for another relay address does not verify here', async () => {
-  const { server } = await relay({ publicHost: 'Relay.Example.com:443' })
+  const { server } = await relay({ publicUrl: 'https://Relay.Example.com:443' })
   try {
     const key = freshKey()
     assert.equal((await registerAs(server, key.seed, key.pub, TOKEN)).status, 401, 'signed for the address it was reached on')

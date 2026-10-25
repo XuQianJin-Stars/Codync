@@ -8,7 +8,7 @@ import { getRequestListener } from '@hono/node-server'
 import { HTTPException } from 'hono/http-exception'
 import { WebSocketServer } from 'ws'
 import { COMPUTER_ID, computerIdFor, fromB64url } from './codec.ts'
-import { signedAuthority, verifyCodyncSig } from './sig.ts'
+import { publicAuthority, verifyCodyncSig } from './sig.ts'
 import type { RelayStore } from './store.ts'
 import { Rooms } from './room.ts'
 
@@ -153,7 +153,7 @@ export async function startRelay(options: {
    * signs. Defaults to the listening address. Never taken from the request's `Host` header, so a
    * signature made for another relay does not verify here.
    */
-  publicHost?: string
+  publicUrl?: string
   /** Required to enroll a computer this relay does not already know. */
   token?: string
   maxComputers?: number
@@ -280,7 +280,7 @@ export async function startRelay(options: {
   await new Promise<void>((resolve) => server.listen(options.port ?? 0, host, resolve))
   const address = server.address()
   const bound = typeof address === 'object' && address ? address.port : (options.port ?? 0)
-  authority = signedAuthority(options.publicHost ?? `${host}:${bound}`)
+  authority = publicAuthority(options.publicUrl ?? `http://${host}:${bound}`)
   return {
     server,
     url: `http://${host}:${bound}`,

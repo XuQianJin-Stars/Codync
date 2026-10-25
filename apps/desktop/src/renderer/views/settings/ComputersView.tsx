@@ -185,10 +185,16 @@ function ManagedComputerCard({ store, ssh: overSSH }: { store: BotStore; ssh: bo
                     <Text size="caption" tone={cloud.lastError ? 'attention' : 'secondary'}>{cloudLine}</Text>
                   </span>
                 </Switch>,
-                <RelayAddressRow key="relay" url={cloud.url} disabled={busy || !manageable} save={(typed) => run(() => app.cloud.setCloudUrl(store, typed))} />,
+                // The relay's address shows only while it's on: off, the host reports no address, so the
+                // field couldn't tell a saved private relay from none.
+                ...(cloud.enabled
+                  ? [<RelayAddressRow key="relay" url={cloud.url} disabled={busy || !manageable} save={(typed) => run(() => app.cloud.setCloudUrl(store, typed))} />]
+                  : []),
                 // Only a private relay asks for a token; the Codync cloud never does.
                 privateRelay ? (
-                  <RelayTokenRow key="relay-token" tokenSet={cloud.tokenSet === true} disabled={busy || !manageable} save={(token) => void run(() => app.cloud.setRelayToken(store, token))} />
+                  cloud.enabled ? (
+                    <RelayTokenRow key="relay-token" tokenSet={cloud.tokenSet === true} disabled={busy || !manageable} save={(token) => void run(() => app.cloud.setRelayToken(store, token))} />
+                  ) : null
                 ) : (
                   accountLine
                 ),

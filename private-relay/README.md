@@ -13,12 +13,12 @@ cd private-relay
 npm ci
 export CODYNC_PRIVATE_RELAY_DATA=/var/lib/codync-private-relay
 export CODYNC_PRIVATE_RELAY_TOKEN='a-long-random-secret'
-export CODYNC_PRIVATE_RELAY_PUBLIC_HOST=relay.example.com
+export CODYNC_PRIVATE_RELAY_PUBLIC_URL=https://relay.example.com
 export PORT=8788
 npm start
 ```
 
-`CODYNC_PRIVATE_RELAY_PUBLIC_HOST` is the host computers put in their Relay address, with its port when that isn't 443 (`relay.example.com:8443`). Every `Codync-Sig` must be signed for it, so a signature made for another relay is refused here. The request's `Host` header is not used. Unset, only the loopback address itself verifies (`127.0.0.1:8788`), which suits a relay on the same machine (`http://127.0.0.1:8788`) and refuses everything that arrives through a proxy.
+`CODYNC_PRIVATE_RELAY_PUBLIC_URL` is the address computers put in their Relay address (`https://relay.example.com`, or `https://relay.example.com:8443`). Every `Codync-Sig` must be signed for it, so a signature made for another relay is refused here. The request's `Host` header is not used. Unset, only the loopback address itself verifies (`http://127.0.0.1:8788`), which suits a relay on the same machine and refuses everything that arrives through a proxy.
 
 `CODYNC_PRIVATE_RELAY_TOKEN` is required: 16 to 256 visible ASCII characters (no spaces). A computer this relay does not already know can register only by presenting that token. Without it, anyone who can reach the relay could create a computer and hold a room. The process refuses to start without such a token. At most 32 computers are stored. One that is already registered can refresh its row and reconnect with its own key, without the token.
 
@@ -42,7 +42,7 @@ Group=codync-relay
 Environment=PORT=8788
 Environment=CODYNC_PRIVATE_RELAY_DATA=/var/lib/codync-private-relay
 Environment=CODYNC_PRIVATE_RELAY_TOKEN=a-long-random-secret
-Environment=CODYNC_PRIVATE_RELAY_PUBLIC_HOST=relay.example.com
+Environment=CODYNC_PRIVATE_RELAY_PUBLIC_URL=https://relay.example.com
 ExecStart=/usr/bin/node --experimental-strip-types /opt/codync-private-relay/src/index.ts
 Restart=always
 RestartSec=2

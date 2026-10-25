@@ -13,8 +13,8 @@ if (token.length < 16 || token.length > 256 || !/^[\x21-\x7E]+$/.test(token)) {
   process.exit(1)
 }
 // What computers put in their Relay address. Unset, only this loopback address verifies.
-const publicHost = process.env.CODYNC_PRIVATE_RELAY_PUBLIC_HOST?.trim() || undefined
+const publicUrl = process.env.CODYNC_PRIVATE_RELAY_PUBLIC_URL?.trim() || undefined
 
 const store = new RelayStore(resolve(dataDir, 'relay.sqlite'))
-const relay = await startRelay({ store, host, port, token, publicHost })
-console.log(`codync private relay listening on ${relay.url} for ${publicHost ?? relay.url}`)
+const relay = await startRelay({ store, host, port, token, publicUrl })
+console.log(`codync private relay listening on ${relay.url} for ${publicUrl ?? relay.url}`)

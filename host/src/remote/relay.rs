@@ -51,6 +51,10 @@ const MAILBOX_MAX_AGE_MS: i64 = 25 * 60 * 60 * 1000;
 const REPLACED: u16 = 4009;
 const RATE_LIMITED: u16 = 4008;
 
+/// How long the old relay stays up after the cloud is reconfigured, so phones that reach this
+/// computer through it can reconnect once and learn the new address.
+const MOVE_GRACE: Duration = Duration::from_secs(10);
+
 /// Keeps this computer on the relay while the cloud is on; restarts when it's reconfigured.
 pub async fn run(hub: Arc<Hub>) {
     let mut config = hub.cloud.config.subscribe();
@@ -69,9 +73,16 @@ pub async fn run(hub: Arc<Hub>) {
         });
         let restart = if let Some(address) = address {
             let cloud_host = cloud::authority(&address.url).unwrap_or_else(|_| "unknown".into());
+            let session = supervise(&hub, &address).instrument(tracing::info_span!("relay", cloud_host));
+            tokio::pin!(session);
             tokio::select! {
-                () = supervise(&hub, &address).instrument(tracing::info_span!("relay", cloud_host)) => Ok(()),
-                r = config.changed() => r,
+                () = &mut session => Ok(()),
+                r = config.changed() => {
+                    // Every channel reconnects on this change (`channel::serve`) and reads the new
+                    // address from `hello`. Phones on this relay need it to stay up while they do.
+                    let _ = timeout(MOVE_GRACE, &mut session).await;
+                    r
+                }
             }
         } else {
             // No cloud: account devices can't be renewed, so they aren't honored either.

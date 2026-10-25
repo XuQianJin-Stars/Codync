@@ -19,7 +19,7 @@ export const vectors = JSON.parse(readFileSync(new URL('../../docs/reference/fix
   pairing: { offerId: string }
 }
 
-export async function relay(options: { now?: () => number; publicHost?: string } = {}): Promise<{ server: RelayServer; dir: string }> {
+export async function relay(options: { now?: () => number; publicUrl?: string } = {}): Promise<{ server: RelayServer; dir: string }> {
   const dir = mkdtempSync(join(tmpdir(), 'codync-private-relay-'))
   const store = new RelayStore(join(dir, 'relay.sqlite'))
   const server = await startRelay({ store, port: 0, token: TOKEN, ...options })

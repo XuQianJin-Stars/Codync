@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs'
 import test from 'node:test'
 import { computerIdFor, fromB64url, verifyEd25519 } from '../src/codec.ts'
 import { parseAcl } from '../src/acl.ts'
-import { signedAuthority, verifyCodyncSig } from '../src/sig.ts'
+import { publicAuthority, verifyCodyncSig } from '../src/sig.ts'
 import { RelayStore } from '../src/store.ts'
 import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -46,8 +46,11 @@ test('the vector computer id, request signature and ACL bytes verify', async () 
 })
 
 test('the signed authority keeps a real port and drops the defaults', () => {
-  assert.equal(signedAuthority('Example.COM:8443'), 'example.com:8443')
-  assert.equal(signedAuthority('relay.example.com:443'), 'relay.example.com')
-  assert.equal(signedAuthority('127.0.0.1:80'), '127.0.0.1')
-  assert.equal(signedAuthority('[::1]:8788'), '[::1]:8788')
+  assert.equal(publicAuthority('https://Example.COM:8443'), 'example.com:8443')
+  assert.equal(publicAuthority('https://relay.example.com:443/'), 'relay.example.com')
+  assert.equal(publicAuthority('http://127.0.0.1:80'), '127.0.0.1')
+  assert.equal(publicAuthority('http://127.0.0.1:443'), '127.0.0.1:443', 'only the scheme default drops')
+  assert.equal(publicAuthority('https://relay.example.com:80'), 'relay.example.com:80')
+  assert.equal(publicAuthority('http://[::1]:8788'), '[::1]:8788')
+  assert.throws(() => publicAuthority('https://relay.example.com/path'))
 })

@@ -12,13 +12,16 @@ export interface SignedRequest {
 }
 
 /**
- * Authority as the host signs it. Default ports are omitted (`:443`, `:80`); any other port stays.
- * `Host: Example.COM:8443` → `example.com:8443`.
+ * The authority computers sign for this relay: the host of its public URL, with the port only when
+ * it isn't the scheme's default, as the host derives it from the same address.
+ * `https://Relay.Example.com:443` → `relay.example.com`, `http://127.0.0.1:443` → `127.0.0.1:443`.
  */
-export function signedAuthority(hostHeader: string): string {
-  const host = hostHeader.trim().toLowerCase()
-  if (host.endsWith(':443') || host.endsWith(':80')) return host.slice(0, host.lastIndexOf(':'))
-  return host
+export function publicAuthority(publicUrl: string): string {
+  const url = new URL(publicUrl)
+  if (!['http:', 'https:'].includes(url.protocol) || url.pathname !== '/' || url.search || url.hash || url.username || url.password) {
+    throw new Error('CODYNC_PRIVATE_RELAY_PUBLIC_URL must be an http(s) address with no path, such as https://relay.example.com.')
+  }
+  return url.host.toLowerCase()
 }
 
 export async function sigCanonical(
@@ -34,7 +37,7 @@ export async function sigCanonical(
 
 /**
  * Checks the header's signature and time window. Replay of `(kid, nonce)` is the caller's job.
- * `authority` must be `signedAuthority` of the Host header the client signed.
+ * `authority` is this relay's `publicAuthority`.
  */
 export async function verifyCodyncSig(
   header: string | undefined,
