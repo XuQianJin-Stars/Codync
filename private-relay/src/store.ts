@@ -1,7 +1,7 @@
 /** SQLite for computers, ACL, signature nonces and the offline mailbox. Sockets stay in memory. */
 
 import { chmodSync, mkdirSync } from 'node:fs'
-import { DatabaseSync } from 'node:sqlite'
+import { DatabaseSync, type StatementSync } from 'node:sqlite'
 import { NONCE_TTL_MS } from './sig.ts'
 
 export interface ComputerRow {
@@ -21,6 +21,8 @@ export interface MailboxRow {
 
 export class RelayStore {
   readonly db: DatabaseSync
+  /** Run on every signed request, so prepared once. */
+  private readonly hot: { computer: StatementSync; dropNonces: StatementSync; addNonce: StatementSync }
 
   constructor(file: string) {
     const dir = file.slice(0, file.lastIndexOf('/')) || '.'
@@ -57,6 +59,7 @@ export class RelayStore {
         exp INTEGER NOT NULL,
         PRIMARY KEY(kid, nonce)
       );
+      CREATE INDEX IF NOT EXISTS nonces_exp ON nonces(exp);
       CREATE TABLE IF NOT EXISTS mailbox(
         seq INTEGER PRIMARY KEY AUTOINCREMENT,
         computer_id TEXT NOT NULL,
@@ -71,6 +74,11 @@ export class RelayStore {
     `)
     // A crash leaves the in-flight row marked delivering, and the new process has no host to ack it.
     this.db.exec("UPDATE mailbox SET state = 'queued' WHERE state = 'delivering'")
+    this.hot = {
+      computer: this.db.prepare('SELECT id, sign_pub, status FROM computers WHERE id = ?'),
+      dropNonces: this.db.prepare('DELETE FROM nonces WHERE exp <= ?'),
+      addNonce: this.db.prepare('INSERT OR IGNORE INTO nonces(kid, nonce, exp) VALUES (?, ?, ?)'),
+    }
     try {
       chmodSync(file, 0o600)
     } catch {
@@ -83,7 +91,7 @@ export class RelayStore {
   }
 
   computer(id: string): ComputerRow | null {
-    const row = this.db.prepare('SELECT id, sign_pub, status FROM computers WHERE id = ?').get(id) as
+    const row = this.hot.computer.get(id) as
       | { id: string; sign_pub: string; status: string }
       | undefined
     return row ? { id: row.id, signPub: row.sign_pub, status: row.status } : null
@@ -117,9 +125,8 @@ export class RelayStore {
 
   /** `false` when this nonce was already seen and is still inside its 10-minute window. */
   rememberNonce(kid: string, nonce: string, now: number): boolean {
-    this.db.prepare('DELETE FROM nonces WHERE exp <= ?').run(now)
-    const result = this.db.prepare('INSERT OR IGNORE INTO nonces(kid, nonce, exp) VALUES (?, ?, ?)').run(kid, nonce, now + NONCE_TTL_MS)
-    return result.changes === 1
+    this.hot.dropNonces.run(now)
+    return this.hot.addNonce.run(kid, nonce, now + NONCE_TTL_MS).changes === 1
   }
 
   acl(computerId: string): { ver: number; body: string } | null {
@@ -159,10 +166,6 @@ export class RelayStore {
     return result.changes === 1
   }
 
-  mailboxState(computerId: string, dk: string, nonce: string): string | null {
-    return this.mailboxByNonce(computerId, dk, nonce)?.state ?? null
-  }
-
   listMailbox(computerId: string, dk: string): { nonce: string; exp: number; state: string }[] {
     return this.db
       .prepare('SELECT nonce, exp, state FROM mailbox WHERE computer_id = ? AND dk = ? ORDER BY seq')
@@ -188,26 +191,24 @@ export class RelayStore {
     this.db.prepare("UPDATE mailbox SET state = 'delivering' WHERE seq = ?").run(seq)
   }
 
-  /** The item the host is acknowledging, if it is the one in flight. */
+  /** Removes the item the host is acknowledging, if it is the one in flight. */
   takeDelivering(computerId: string, seq: number): { dk: string; nonce: string } | null {
     const row = this.db
-      .prepare("SELECT dk, nonce FROM mailbox WHERE seq = ? AND computer_id = ? AND state = 'delivering'")
+      .prepare("DELETE FROM mailbox WHERE seq = ? AND computer_id = ? AND state = 'delivering' RETURNING dk, nonce")
       .get(seq, computerId) as { dk: string; nonce: string } | undefined
-    if (!row) return null
-    this.db.prepare('DELETE FROM mailbox WHERE seq = ?').run(seq)
-    return row
+    return row ?? null
   }
 
   requeueDelivering(computerId: string): void {
     this.db.prepare("UPDATE mailbox SET state = 'queued' WHERE computer_id = ? AND state = 'delivering'").run(computerId)
   }
 
-  expired(computerId: string, now: number): { dk: string; nonce: string }[] {
-    return this.db.prepare('SELECT dk, nonce FROM mailbox WHERE computer_id = ? AND exp <= ?').all(computerId, now) as { dk: string; nonce: string }[]
-  }
-
-  deleteExpired(computerId: string, now: number): void {
-    this.db.prepare('DELETE FROM mailbox WHERE computer_id = ? AND exp <= ?').run(computerId, now)
+  /** Removes this computer's expired items and says whose they were. */
+  takeExpired(computerId: string, now: number): { dk: string; nonce: string }[] {
+    return this.db.prepare('DELETE FROM mailbox WHERE computer_id = ? AND exp <= ? RETURNING dk, nonce').all(computerId, now) as {
+      dk: string
+      nonce: string
+    }[]
   }
 
   /** Expired mail for every computer, whether or not a room is still open. */

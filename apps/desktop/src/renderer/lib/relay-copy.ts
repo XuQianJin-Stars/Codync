@@ -22,10 +22,9 @@ export function connectedThrough(cloud: string | null | undefined): string {
   return host ? `Connected through Private relay (${host})` : 'Connected through Cloudflare'
 }
 
-/** The desktop "Reach from anywhere" caption. An error string is shown as the host wrote it. */
-export function cloudStatusLine(cloud: { enabled: boolean; url?: string | null; connected?: boolean | null; lastError?: string | null }): string {
+/** The desktop "Reach from anywhere" caption while there is no error to show. */
+export function cloudStatusLine(cloud: { enabled: boolean; url?: string | null; connected?: boolean | null }): string {
   if (!cloud.enabled) return 'Off: only Wi-Fi and Tailscale reach it, nothing goes through Cloudflare.'
-  if (cloud.lastError) return cloud.lastError
   const host = relayHost(cloud.url)
   if (!host) return cloud.connected ? 'Reachable from anywhere through Cloudflare (encrypted).' : 'Connecting to Cloudflare…'
   return cloud.connected

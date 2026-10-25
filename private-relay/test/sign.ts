@@ -1,16 +1,26 @@
 /** Ed25519 request signing for tests. Node has no seed import, so the PKCS#8 prefix wraps the 32-byte seed. */
 
-import { createPrivateKey, sign } from 'node:crypto'
+import { createPrivateKey, createPublicKey, sign, type KeyObject } from 'node:crypto'
 import { b64url, fromB64url, sha256 } from '../src/codec.ts'
 import { sigCanonical } from '../src/sig.ts'
 
 const PKCS8_PREFIX = Buffer.from('302e020100300506032b657004220420', 'hex')
 
+function privateKeyFromSeed(seed: Uint8Array): KeyObject {
+  return createPrivateKey({ key: Buffer.concat([PKCS8_PREFIX, Buffer.from(seed)]), format: 'der', type: 'pkcs8' })
+}
+
 export function signBytes(seedB64: string, message: Uint8Array): string {
   const seed = fromB64url(seedB64, 32)
   if (!seed) throw new Error('bad seed')
-  const key = createPrivateKey({ key: Buffer.concat([PKCS8_PREFIX, Buffer.from(seed)]), format: 'der', type: 'pkcs8' })
-  return b64url(sign(null, message, key))
+  return b64url(sign(null, message, privateKeyFromSeed(seed)))
+}
+
+/** A new Ed25519 key as base64url seed and public key. */
+export function freshKey(): { seed: string; pub: string } {
+  const seed = crypto.getRandomValues(new Uint8Array(32))
+  const der = createPublicKey(privateKeyFromSeed(seed)).export({ format: 'der', type: 'spki' })
+  return { seed: b64url(seed), pub: b64url(der.subarray(der.length - 32)) }
 }
 
 export async function sigHeader(

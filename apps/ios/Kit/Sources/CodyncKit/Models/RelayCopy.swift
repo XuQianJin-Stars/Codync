@@ -6,15 +6,13 @@ public enum RelayCopy {
     private static let official = ["api.codync.dev", "dev-api.codync.dev"]
 
     /// Host (and a non-default port) when `cloud` is a private relay. Nil for the official clouds.
-    public static func host(of cloud: String?) -> String? {
-        guard let cloud, let url = URL(string: cloud), let name = url.host?.lowercased() else { return nil }
-        if official.contains(name), url.port == nil { return nil }
-        if let port = url.port { return "\(name):\(port)" }
-        return name
-    }
-
     public static func host(of cloud: URL?) -> String? {
-        host(of: cloud?.absoluteString)
+        guard let cloud, let name = cloud.host?.lowercased() else { return nil }
+        if official.contains(name), cloud.port == nil { return nil }
+        // `URL.host` drops an IPv6 address's brackets; the other clients keep them.
+        let shown = name.contains(":") ? "[\(name)]" : name
+        if let port = cloud.port { return "\(shown):\(port)" }
+        return shown
     }
 
     /// The connection menu sentence. Official clouds keep the existing Cloudflare phrases.

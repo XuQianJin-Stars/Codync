@@ -50,11 +50,15 @@ internal fun connectionDescription(state: AppState): String {
 internal fun relayHost(cloud: String?): String? {
     if (cloud.isNullOrBlank()) return null
     val uri = runCatching { java.net.URI(cloud.trim()) }.getOrNull() ?: return null
+    // `URI.host` keeps an IPv6 address's brackets.
     val name = uri.host?.lowercase() ?: return null
     if ((name == "api.codync.dev" || name == "dev-api.codync.dev") && uri.port == -1) return null
-    val shown = if (name.contains(':')) "[$name]" else name
-    return if (uri.port > 0) "$shown:${uri.port}" else shown
+    return if (uri.port > 0) "$name:${uri.port}" else name
 }
+
+/** The route after a bot count in Computers & settings (iOS `RelayCopy.detailSuffix`). */
+internal fun routeLabel(route: HostRoute, cloud: String?): String =
+    if (route == HostRoute.Direct) "Wi-Fi/Tailscale" else relayHost(cloud)?.let { "Private relay ($it)" } ?: "Cloudflare"
 
 internal fun connectedThrough(cloud: String?): String {
     val host = relayHost(cloud)

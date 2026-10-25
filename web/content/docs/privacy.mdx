@@ -11,6 +11,8 @@ Codync keeps your work on your computer. The phone and desktop apps are windows 
 
 When your phone isn't on the same network as your computer, the connection goes through the Codync relay on Cloudflare. Everything inside it is end-to-end encrypted between your phone and your computer. See [Remote access](/docs/remote-access) for how that works and how to turn the relay off.
 
+If you point a computer at [a relay you run yourself](/docs/remote-access#your-own-relay), that relay takes the Codync relay's place for it: whoever runs that server sees what's listed below, and Codync's relay sees none of it. It can't read the encrypted connection either. Sign-in, public routine webhooks and remote screen through the relay aren't available there, and push notifications still go through Codync's push service.
+
 **The relay can't read** your messages, files, bot output, approvals, terminals or anything else you send through the encrypted connection.
 
 **The relay does see:**

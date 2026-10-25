@@ -41,7 +41,7 @@ export function putMailbox(store: RelayStore, computerId: string, dk: string, ms
 export function cancelMailbox(store: RelayStore, computerId: string, dk: string, msg: Msg): string {
   const nonce = typeof msg.nonce === 'string' ? msg.nonce : ''
   if (store.cancelQueued(computerId, dk, nonce)) return JSON.stringify({ t: 'mbox.cancelled', nonce })
-  const state = store.mailboxState(computerId, dk, nonce)
+  const state = store.mailboxByNonce(computerId, dk, nonce)?.state
   return JSON.stringify({ t: 'mbox.gone', nonce, state: state === 'delivering' ? 'delivering' : 'unknown' })
 }
 
@@ -79,8 +79,5 @@ export function ackMailbox(store: RelayStore, computerId: string, msg: Msg): Mai
 }
 
 export function expireMailbox(store: RelayStore, computerId: string, now: number): MailboxNote[] {
-  const rows = store.expired(computerId, now)
-  const notes = rows.map((row) => ({ dk: row.dk, text: JSON.stringify({ t: 'mbox.expired', nonce: row.nonce }) }))
-  if (rows.length) store.deleteExpired(computerId, now)
-  return notes
+  return store.takeExpired(computerId, now).map((row) => ({ dk: row.dk, text: JSON.stringify({ t: 'mbox.expired', nonce: row.nonce }) }))
 }

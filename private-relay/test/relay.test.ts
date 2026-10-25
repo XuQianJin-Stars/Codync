@@ -1,130 +1,30 @@
 import assert from 'node:assert/strict'
-import { createPrivateKey, createPublicKey } from 'node:crypto'
-import { copyFileSync, mkdtempSync, readFileSync } from 'node:fs'
+import { copyFileSync, mkdtempSync } from 'node:fs'
 import { request as httpRequest } from 'node:http'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
-import { WebSocket } from 'ws'
 import { b64url, fromB64url } from '../src/codec.ts'
-import { startRelay, type RelayServer } from '../src/http.ts'
+import { startRelay } from '../src/http.ts'
 import { PONG } from '../src/room.ts'
 import { RelayStore } from '../src/store.ts'
-import { sigHeader, signBytes } from './sign.ts'
+import {
+  TOKEN,
+  vectors,
+  relay,
+  authorityOf,
+  register,
+  openSocket,
+  nextMessage,
+  nextClose,
+  hostSocket,
+  deviceSocket,
+  signedAcl,
+  registerAs,
+} from './harness.ts'
+import { freshKey, sigHeader } from './sign.ts'
 
-const TOKEN = 'test-relay-token-1'
-
-const vectors = JSON.parse(readFileSync(new URL('../../docs/reference/fixtures/remote-relay-vectors.json', import.meta.url), 'utf8')) as {
-  keys: { hostSignSeed: string; hostSignPub: string; hostBoxPub: string; deviceSignSeed: string; deviceSignPub: string; computerId: string }
-  acl: { d: string; sig: string }
-  mailbox: { blob: string; clientNonce: string }
-  pairing: { offerId: string }
-}
-
-async function relay(): Promise<{ server: RelayServer; dir: string }> {
-  const dir = mkdtempSync(join(tmpdir(), 'codync-private-relay-'))
-  const store = new RelayStore(join(dir, 'relay.sqlite'))
-  const server = await startRelay({ store, port: 0, token: TOKEN })
-  return { server, dir }
-}
-
-function authorityOf(url: string): string {
-  return new URL(url).host
-}
-
-async function register(server: RelayServer): Promise<void> {
-  const body = JSON.stringify({
-    boxKey: vectors.keys.hostBoxPub,
-    name: 'Studio',
-    platform: 'macos',
-    device: 'macstudio',
-    version: '2.24.0',
-  })
-  const bytes = new TextEncoder().encode(body)
-  const path = '/v1/host/register'
-  const header = await sigHeader(vectors.keys.hostSignSeed, vectors.keys.hostSignPub, 'POST', authorityOf(server.url), path, bytes)
-  const res = await fetch(`${server.url}${path}`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json', 'Codync-Sig': header, 'Codync-Relay-Token': TOKEN },
-    body,
-  })
-  assert.equal(res.status, 200)
-  const json = (await res.json()) as { computerId: string; owned: boolean }
-  assert.equal(json.computerId, vectors.keys.computerId)
-  assert.equal(json.owned, false)
-}
-
-/** Messages that arrive before the test asks for them stay queued. */
-function openSocket(url: string, header: string): Promise<WebSocket> {
-  const ws = new WebSocket(url, { headers: { 'Codync-Sig': header } })
-  const queued: string[] = []
-  const waiters: ((text: string) => void)[] = []
-  ws.on('message', (data) => {
-    const text = data.toString()
-    const waiter = waiters.shift()
-    if (waiter) waiter(text)
-    else queued.push(text)
-  })
-  let socketError: Error | null = null
-  ws.once('error', (error) => {
-    socketError = error instanceof Error ? error : new Error(String(error))
-  })
-  ;(ws as WebSocket & { take(): Promise<string> }).take = () =>
-    new Promise((resolve, reject) => {
-      if (socketError) return reject(socketError)
-      const text = queued.shift()
-      if (text !== undefined) resolve(text)
-      else waiters.push(resolve)
-    })
-  return new Promise((resolve, reject) => {
-    let settled = false
-    const fail = (error: unknown) => {
-      if (settled) return
-      settled = true
-      reject(error)
-    }
-    ws.once('open', () => {
-      if (settled) return
-      settled = true
-      resolve(ws)
-    })
-    ws.once('unexpected-response', (_req, res) => {
-      const chunks: Buffer[] = []
-      res.on('data', (c: Buffer) => chunks.push(c))
-      res.on('end', () => fail(Object.assign(new Error(`HTTP ${res.statusCode} ${Buffer.concat(chunks).toString()}`), { status: res.statusCode, body: Buffer.concat(chunks).toString() })))
-    })
-    ws.once('error', fail)
-  })
-}
-
-function nextMessage(ws: WebSocket): Promise<string> {
-  return (ws as WebSocket & { take(): Promise<string> }).take()
-}
-
-function nextClose(ws: WebSocket): Promise<number> {
-  return new Promise((resolve) => ws.once('close', (code) => resolve(code)))
-}
-
-async function hostSocket(server: RelayServer): Promise<WebSocket> {
-  const path = '/v1/relay/host?v=1'
-  const header = await sigHeader(vectors.keys.hostSignSeed, vectors.keys.hostSignPub, 'GET', authorityOf(server.url), path, new Uint8Array())
-  return openSocket(`${server.url.replace('http', 'ws')}${path}`, header)
-}
-
-async function deviceSocket(server: RelayServer, pair = ''): Promise<WebSocket> {
-  const path = `/v1/relay/device/${vectors.keys.computerId}?v=1${pair ? `&pair=${pair}` : ''}`
-  const header = await sigHeader(vectors.keys.deviceSignSeed, vectors.keys.deviceSignPub, 'GET', authorityOf(server.url), path, new Uint8Array())
-  return openSocket(`${server.url.replace('http', 'ws')}${path}`, header)
-}
-
-function signedAcl(ver: number, devices: { dk: string; grant: null }[], offers: { id: string; exp: number }[]): string {
-  const json = JSON.stringify({ v: 1, computerId: vectors.keys.computerId, ver, devices, offers })
-  const d = b64url(new TextEncoder().encode(json))
-  const sig = signBytes(vectors.keys.hostSignSeed, new TextEncoder().encode(json))
-  return JSON.stringify({ t: 'acl', d, sig })
-}
-
-test('register, an empty state pull, and phase-1 routes that stay 404', async () => {
+test('register, an empty state pull, and the cloud routes this relay does not serve', async () => {
   const { server } = await relay()
   try {
     assert.equal((await fetch(`${server.url}/health`)).status, 200)
@@ -136,7 +36,7 @@ test('register, an empty state pull, and phase-1 routes that stay 404', async ()
     const old = '/v1/relay/host?v=2'
     const oldHeader = await sigHeader(vectors.keys.hostSignSeed, vectors.keys.hostSignPub, 'GET', authorityOf(server.url), old, new Uint8Array())
     await assert.rejects(openSocket(`${server.url.replace('http', 'ws')}${old}`, oldHeader), (error: { status?: number }) => error.status === 426)
-    for (const route of ['/v1/host/screen-ice', '/v1/host/unclaim', '/v1/host/grants/g/revoke']) {
+    for (const route of ['/v1/host/screen-ice', '/v1/host/unclaim', '/v1/host/grants/g/revoke', `/v1/hooks/${vectors.keys.computerId}/h`]) {
       const res = await fetch(`${server.url}${route}`, { method: 'POST', body: '{}' })
       assert.equal(res.status, 404, route)
       assert.equal(((await res.json()) as { error: { code: string } }).error.code, 'notFound')
@@ -291,21 +191,24 @@ test('a body over the limit is refused before it is trusted', async () => {
     const over = Buffer.alloc(64 * 1024 + 1, 0x61)
     const declared = await fetch(`${server.url}/v1/host/register`, { method: 'POST', body: over })
     assert.equal(declared.status, 400)
-    assert.equal(((await declared.json()) as { error: { code: string } }).error.code, 'badRequest')
-    const chunked = await new Promise<number>((resolve, reject) => {
+    // The size refusal itself, not a later field check.
+    assert.deepEqual(await declared.json(), { error: { code: 'badRequest', message: 'Body too large' } })
+    const chunked = await new Promise<{ status: number; body: string }>((resolve, reject) => {
       const url = new URL(`${server.url}/v1/host/register`)
       const req = httpRequest(
         { hostname: url.hostname, port: url.port, path: url.pathname, method: 'POST', headers: { 'content-type': 'application/json' } },
         (res) => {
-          res.resume()
-          res.on('end', () => resolve(res.statusCode ?? 0))
+          let body = ''
+          res.on('data', (chunk: Buffer) => (body += chunk.toString()))
+          res.on('end', () => resolve({ status: res.statusCode ?? 0, body }))
         },
       )
       req.on('error', reject)
       req.write(over)
       req.end()
     })
-    assert.equal(chunked, 400)
+    assert.equal(chunked.status, 400)
+    assert.match(chunked.body, /Body too large/)
   } finally {
     await server.close()
   }
@@ -331,7 +234,7 @@ test('a restart between delivery and acknowledgment sends the item again', async
     const item = JSON.parse(await nextMessage(host)) as { t: string; nonce: string }
     assert.equal(item.t, 'mbox.item')
     assert.equal(item.nonce, nonce)
-    assert.equal(store.mailboxState(vectors.keys.computerId, vectors.keys.deviceSignPub, nonce), 'delivering')
+    assert.equal(store.mailboxByNonce(vectors.keys.computerId, vectors.keys.deviceSignPub, nonce)?.state, 'delivering')
     store.db.exec('PRAGMA wal_checkpoint(TRUNCATE)')
     copyFileSync(file, join(dir, 'crash.sqlite'))
     host.close()
@@ -343,7 +246,7 @@ test('a restart between delivery and acknowledgment sends the item again', async
   const recovered = new RelayStore(join(dir, 'crash.sqlite'))
   const again = await startRelay({ store: recovered, port: 0, token: TOKEN })
   try {
-    assert.equal(recovered.mailboxState(vectors.keys.computerId, vectors.keys.deviceSignPub, nonce), 'queued')
+    assert.equal(recovered.mailboxByNonce(vectors.keys.computerId, vectors.keys.deviceSignPub, nonce)?.state, 'queued')
     const host = await hostSocket(again)
     host.send(JSON.stringify({ t: 'ready' }))
     const item = JSON.parse(await nextMessage(host)) as { t: string; nonce: string }
@@ -382,26 +285,6 @@ test('a second host replaces the first, and an expired offer is forbidden', asyn
     await server.close()
   }
 })
-
-const PKCS8_PREFIX = Buffer.from('302e020100300506032b657004220420', 'hex')
-
-function freshKey(): { seed: string; pub: string } {
-  const seed = crypto.getRandomValues(new Uint8Array(32))
-  const key = createPrivateKey({ key: Buffer.concat([PKCS8_PREFIX, Buffer.from(seed)]), format: 'der', type: 'pkcs8' })
-  const der = createPublicKey(key).export({ format: 'der', type: 'spki' })
-  const raw = Buffer.isBuffer(der) ? der : Buffer.from(der)
-  return { seed: b64url(seed), pub: b64url(raw.subarray(raw.length - 32)) }
-}
-
-async function registerAs(server: RelayServer, seed: string, pub: string, token?: string): Promise<Response> {
-  const body = JSON.stringify({ boxKey: vectors.keys.hostBoxPub, name: 'Other', platform: 'linux', version: '2.24.0' })
-  const bytes = new TextEncoder().encode(body)
-  const path = '/v1/host/register'
-  const header = await sigHeader(seed, pub, 'POST', authorityOf(server.url), path, bytes)
-  const headers: Record<string, string> = { 'content-type': 'application/json', 'Codync-Sig': header }
-  if (token !== undefined) headers['Codync-Relay-Token'] = token
-  return fetch(`${server.url}${path}`, { method: 'POST', headers, body })
-}
 
 test('a new computer needs the registration token, and a known one can refresh without it', async () => {
   const { server } = await relay()
@@ -500,8 +383,8 @@ test('expired mailbox rows are deleted when no room is open', async () => {
     assert.equal(server.rooms.retained(), 0)
     now += 1_000
     server.rooms.sweep()
-    assert.equal(store.mailboxState(vectors.keys.computerId, vectors.keys.deviceSignPub, 'gone'), null)
-    assert.equal(store.mailboxState(vectors.keys.computerId, vectors.keys.deviceSignPub, 'kept'), 'queued')
+    assert.equal(store.mailboxByNonce(vectors.keys.computerId, vectors.keys.deviceSignPub, 'gone'), null)
+    assert.equal(store.mailboxByNonce(vectors.keys.computerId, vectors.keys.deviceSignPub, 'kept')?.state, 'queued')
   } finally {
     await server.close()
   }

@@ -272,10 +272,19 @@ export class CloudModel extends Observable {
   /** Points this computer's relay at `raw`, or clears it when `raw` is blank. False when the host refuses. */
   async setCloudUrl(store: BotStore, raw: string): Promise<boolean> {
     const next = relayAddressToSave(raw, store.cloud?.url)
-    if (next === null) return true
+    return next === null || (await this.saveRelay(store, { url: next }))
+  }
+
+  /** Saves the private relay's registration token for the address in use. Blank leaves it as it is. */
+  async setRelayToken(store: BotStore, token: string): Promise<void> {
+    const url = store.cloud?.url
+    if (url && token.trim()) await this.saveRelay(store, { url, token: token.trim() })
+  }
+
+  /** The host's `setCloudUrl`. The relay restarts, same as turning the cloud on or off. */
+  private async saveRelay(store: BotStore, body: { url: string; token?: string }): Promise<boolean> {
     try {
-      // The relay restarts, same as turning the cloud on or off.
-      await (await store.ready()).call('setCloudUrl', { url: next }, 30_000)
+      await (await store.ready()).call('setCloudUrl', body, 30_000)
       return true
     } catch (error) {
       this.fail(error)

@@ -525,11 +525,15 @@ export type AccountApproval = 'code' | 'auto'
 export interface CloudStatus {
   enabled: boolean
   url?: string | null
+  /** A private relay's registration token is saved (the token itself never leaves the host). */
+  tokenSet?: boolean | null
   registered?: boolean | null
   connected?: boolean | null
   owner?: CloudOwner | null
   lastError?: string | null
   approval?: AccountApproval | null
+  /** Whose relay: a `private` one has no account, access requests or relayed screen. Absent from older hosts (always Codync's). */
+  relay?: 'codync' | 'private' | null
 }
 
 export interface ClaimSignature {

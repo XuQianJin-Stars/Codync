@@ -39,6 +39,8 @@ interface DeviceConn {
   until: number
   heard: number
   msgs: number
+  /** Traffic in the current `RATE_WINDOW_MS`. */
+  rate: { start: number; msgs: number; bytes: number }
   left: boolean
 }
 
@@ -47,7 +49,6 @@ interface Room {
   host: HostConn | null
   devices: DeviceConn[]
   lastSeenAt: number | null
-  rates: Map<string, { start: number; msgs: number; bytes: number }>
 }
 
 export interface Admit {
@@ -116,11 +117,11 @@ export class Rooms {
     return { ok: true, pair: false }
   }
 
-  admitHost(computerId: string, kid: string): Admit | Refuse {
+  admitHost(computerId: string, kid: string): { ok: true } | Refuse {
     const computer = this.store.computer(computerId)
     if (!computer) return { ok: false, status: 404, code: 'unknownComputer' }
     if (computer.status !== 'active' || computer.signPub !== kid) return { ok: false, status: 403, code: 'forbidden' }
-    return { ok: true, pair: false }
+    return { ok: true }
   }
 
   attachHost(computerId: string, kid: string, ws: WebSocket): void {
@@ -159,6 +160,7 @@ export class Rooms {
       until: admitted.pair ? this.pairingDeadline(computerId, admitted.offer, now) : Number.POSITIVE_INFINITY,
       heard: now,
       msgs: 0,
+      rate: { start: now, msgs: 0, bytes: 0 },
       left: false,
     }
     room.devices.push(device)
@@ -168,11 +170,11 @@ export class Rooms {
     ws.on('message', (data, isBinary) => {
       try {
         device.heard = this.now()
-        if (isBinary) return this.closeDevice(room, device, 4002, 'protocolError')
+        if (isBinary) return this.dropDevice(room, device, 4002, 'protocolError')
         this.onDevice(room, device, data.toString())
       } catch {
         // One bad frame stays on this socket. The room and every other computer keep running.
-        this.closeDevice(room, device, 4002, 'protocolError')
+        this.dropDevice(room, device, 4002, 'protocolError')
       }
     })
     ws.on('close', () => this.dropDevice(room, device))
@@ -202,7 +204,7 @@ export class Rooms {
   private room(id: string): Room {
     let room = this.rooms.get(id)
     if (!room) {
-      room = { id, host: null, devices: [], lastSeenAt: null, rates: new Map() }
+      room = { id, host: null, devices: [], lastSeenAt: null }
       this.rooms.set(id, room)
     }
     return room
@@ -256,9 +258,9 @@ export class Rooms {
     const now = this.now()
     for (const device of [...room.devices]) {
       if (device.pair) {
-        if (!acl.offers.some((o) => o.id === device.offer && o.exp > now)) this.closeDevice(room, device, 4410, 'pairingExpired')
+        if (!acl.offers.some((o) => o.id === device.offer && o.exp > now)) this.dropDevice(room, device, 4410, 'pairingExpired')
       } else if (!acl.devices.some((x) => x.dk === device.dk)) {
-        this.closeDevice(room, device, 4003, 'revoked')
+        this.dropDevice(room, device, 4003, 'revoked')
       }
     }
     send(host.ws, JSON.stringify({ t: 'acl.ok', ver: acl.ver }))
@@ -292,7 +294,7 @@ export class Rooms {
     if (!device) return
     const code = validClose(msg.code) ? msg.code : 1000
     const reason = typeof msg.reason === 'string' ? msg.reason.slice(0, 120) : ''
-    this.closeDevice(room, device, code, reason)
+    this.dropDevice(room, device, code, reason)
   }
 
   private onAck(room: Room, host: HostConn, msg: Msg): void {
@@ -306,23 +308,23 @@ export class Rooms {
     if (device.left) return
     const now = this.now()
     if (device.pair && now >= device.until) {
-      this.closeDevice(room, device, 4410, 'pairingExpired')
+      this.dropDevice(room, device, 4410, 'pairingExpired')
       return
     }
-    if (!this.charge(room, device, utf8(raw).length, now)) {
-      this.closeDevice(room, device, 4008, 'rateLimited')
+    if (!this.charge(device, utf8(raw).length, now)) {
+      this.dropDevice(room, device, 4008, 'rateLimited')
       return
     }
     if (device.pair) {
       device.msgs += 1
       if (device.msgs > PAIRING_MAX_MESSAGES) {
-        this.closeDevice(room, device, 4008, 'rateLimited')
+        this.dropDevice(room, device, 4008, 'rateLimited')
         return
       }
     }
     const msg = readMessage(raw)
     if (!msg) {
-      this.closeDevice(room, device, 4002, 'protocolError')
+      this.dropDevice(room, device, 4002, 'protocolError')
       return
     }
     if (msg.t === 'ping') return send(device.ws, PONG)
@@ -338,15 +340,12 @@ export class Rooms {
       if (msg.t === 'mbox.cancel') return send(device.ws, cancelMailbox(this.store, room.id, device.dk, msg))
       return send(device.ws, listMailbox(this.store, room.id, device.dk))
     }
-    this.closeDevice(room, device, 4002, 'protocolError')
+    this.dropDevice(room, device, 4002, 'protocolError')
   }
 
-  private charge(room: Room, device: DeviceConn, bytes: number, now: number): boolean {
-    let rate = room.rates.get(device.link)
-    if (!rate || now - rate.start >= RATE_WINDOW_MS) {
-      rate = { start: now, msgs: 0, bytes: 0 }
-      room.rates.set(device.link, rate)
-    }
+  private charge(device: DeviceConn, bytes: number, now: number): boolean {
+    if (now - device.rate.start >= RATE_WINDOW_MS) device.rate = { start: now, msgs: 0, bytes: 0 }
+    const rate = device.rate
     rate.msgs += 1
     rate.bytes += bytes
     return rate.msgs <= RATE_MAX_MESSAGES && rate.bytes <= RATE_MAX_BYTES
@@ -390,15 +389,10 @@ export class Rooms {
     if (device.left) return
     device.left = true
     room.devices = room.devices.filter((d) => d !== device)
-    room.rates.delete(device.link)
     const host = room.host
     if (host?.ready) send(host.ws, JSON.stringify({ t: 'close', link: device.link }))
     this.close(device.ws, code, reason)
     this.release(room)
-  }
-
-  private closeDevice(room: Room, device: DeviceConn, code: number, reason: string): void {
-    this.dropDevice(room, device, code, reason)
   }
 
   private release(room: Room): void {

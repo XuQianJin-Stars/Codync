@@ -47,7 +47,6 @@ import androidx.compose.ui.unit.dp
 import com.codync.android.core.Bot
 import com.codync.android.core.CloudComputer
 import com.codync.android.core.ConnectionRoute
-import com.codync.android.core.HostRoute
 import com.codync.android.core.LinkState
 import com.codync.android.design.*
 import com.kyant.shapes.Capsule
@@ -202,8 +201,7 @@ private class ComputerActions(val extensions: () -> Unit, val screen: () -> Unit
     val viewable = online && state.screen != null
     val detail = if (link is LinkState.Ready) {
         val count = state.bots.count { !it.deleted && it.kind != "group" }
-        val via = if (link.route == HostRoute.Direct) "Wi-Fi/Tailscale" else relayHost(computer.cloud)?.let { "Private relay ($it)" } ?: "Cloudflare"
-        "$count bot${if (count == 1) "" else "s"} · $via"
+        "$count bot${if (count == 1) "" else "s"} · ${routeLabel(link.route, computer.cloud)}"
     } else computerStatusText(state)
     Column(Modifier.fillMaxWidth().contextActions(items = {
         listOfNotNull(

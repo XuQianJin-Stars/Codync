@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useState } from 'react'
 import type { AccountApproval, PairingInfo } from '@shared/models'
 import { newSSHProfile, type SSHProfile } from '@shared/ssh'
 import { Button, CardSection, IconButton, Reveal, Switch } from '../../components/Controls'
@@ -17,6 +17,7 @@ import { AuthorizedDevicesSection } from './AuthorizedDevicesSection'
 import { cloudStatusLine } from '../../lib/relay-copy'
 import { useTr } from '../../lib/use-language'
 import { errorText, liveClient, relativeDay, SectionHeader, statusText, thisMac } from './parts'
+import { RelayAddressRow, RelayTokenRow } from './RelayFields'
 import { useSSH } from './ssh-model'
 import { SSHConfigSuggestions } from './SSHConfigSuggestions'
 import { SSHRow } from './SSHRow'
@@ -114,9 +115,9 @@ function ManagedComputerCard({ store, ssh: overSSH }: { store: BotStore; ssh: bo
   const manageable = online && !store.mismatch
   const name = store.hostName
 
-  const run = (work: () => Promise<void>) => {
+  const run = <T,>(work: () => Promise<T>): Promise<T> => {
     setBusy(true)
-    void work().finally(() => setBusy(false))
+    return work().finally(() => setBusy(false))
   }
 
   const setApproval = (approval: AccountApproval) =>
@@ -128,25 +129,10 @@ function ManagedComputerCard({ store, ssh: overSSH }: { store: BotStore; ssh: bo
       }
     })
 
-  const [relayAddress, setRelayAddress] = useState(cloud?.url ?? '')
-  const [relayFocused, setRelayFocused] = useState(false)
-  const savingRelay = useRef(false)
-  useEffect(() => {
-    if (!relayFocused && !savingRelay.current) setRelayAddress(cloud?.url ?? '')
-  }, [cloud?.url, relayFocused])
-  const saveRelay = () => {
-    savingRelay.current = true
-    run(async () => {
-      try {
-        const kept = await app.cloud.setCloudUrl(store, relayAddress)
-        if (!kept) setRelayAddress(store.cloud?.url ?? '')
-      } finally {
-        savingRelay.current = false
-      }
-    })
-  }
-  const cloudSentence = cloud ? cloudStatusLine(cloud) : ''
-  const cloudLine = cloud?.enabled && cloud.lastError ? cloud.lastError : tr(cloudSentence)
+  // A private relay has no accounts: no claim, no access requests.
+  const privateRelay = cloud?.relay === 'private'
+  // The host's error is shown as it wrote it.
+  const cloudLine = cloud?.enabled && cloud.lastError ? cloud.lastError : cloud ? tr(cloudStatusLine(cloud)) : ''
 
   const accountLine = (
     <HStack key="account" gap={8} className="settings-row settings-appear">
@@ -199,27 +185,13 @@ function ManagedComputerCard({ store, ssh: overSSH }: { store: BotStore; ssh: bo
                     <Text size="caption" tone={cloud.lastError ? 'attention' : 'secondary'}>{cloudLine}</Text>
                   </span>
                 </Switch>,
-                <div key="relay" className="settings-row settings-appear">
-                  <Text tone="text">{tr('Relay address')}</Text>
-                  <input
-                    className="settings-field"
-                    aria-label={tr('Relay address')}
-                    placeholder="https://"
-                    value={relayAddress}
-                    spellCheck={false}
-                    disabled={busy || !manageable}
-                    onFocus={() => setRelayFocused(true)}
-                    onBlur={() => {
-                      setRelayFocused(false)
-                      saveRelay()
-                    }}
-                    onChange={(e) => setRelayAddress(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') e.currentTarget.blur()
-                    }}
-                  />
-                </div>,
-                accountLine,
+                <RelayAddressRow key="relay" url={cloud.url} disabled={busy || !manageable} save={(typed) => run(() => app.cloud.setCloudUrl(store, typed))} />,
+                // Only a private relay asks for a token; the Codync cloud never does.
+                privateRelay ? (
+                  <RelayTokenRow key="relay-token" tokenSet={cloud.tokenSet === true} disabled={busy || !manageable} save={(token) => void run(() => app.cloud.setRelayToken(store, token))} />
+                ) : (
+                  accountLine
+                ),
               ]
             : []),
           ...(owner
