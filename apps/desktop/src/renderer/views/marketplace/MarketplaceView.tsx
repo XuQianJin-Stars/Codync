@@ -8,16 +8,17 @@ import { Text } from '../../components/Text'
 import { useStore } from '../../store/context'
 import { useScreenViewed } from '../../store/analytics'
 import { ComputerBadge } from '../ComputerBadge'
-import { AgentSheet, AgentTile, NodeNotice } from './AgentSheet'
+import { AgentSheet } from './AgentSheet'
 import { CredentialsView } from './CredentialsView'
 import { CustomConnectorSheet, InstallConnectorSheet, NewSkillSheet } from './ConnectorSheets'
 import { SetupTerminalView } from './SetupTerminal'
 import { SkillSheet, type SkillRef } from './SkillSheet'
 import {
-  appendPage, clampPage, emptyPage, errorText, market, MARKET_PAGE_SIZE, needsFetch, needsSignIn, pageItems, replacePage,
+  clampPage, emptyPage, errorText, fillConnectorPage, market, MARKET_PAGE_SIZE, needsFetch, needsSignIn, pageItems, replacePage,
   type ExtensionSection, type MarketConnector, type MarketSkill,
 } from './market-models'
-import { AppLogo, ExtensionRail, FormSheet, ItemGrid, ItemRow, MarketRow, MarketSection, PageBar, ScreenHeader, ServiceLogo, SkeletonGrid, SkillGlyph, SlideStack, TileIcon } from './pieces'
+import { MarketPanel } from './MarketplacePanel'
+import { AppLogo, ExtensionRail, FormSheet, ItemGrid, ItemRow, MarketSection, ScreenHeader, ServiceLogo, SkillGlyph, SlideStack } from './pieces'
 import { usePlugins } from './plugins'
 import { useTr } from '../../lib/use-language'
 
@@ -113,16 +114,19 @@ export function MarketplaceView() {
     }
     setLoadingMore(true)
     try {
-      while (cursor && needsFetch(items.items.length, next, pageSize)) {
-        const page = await market.marketConnectors(await store.ready(), connectorQuery.current, cursor)
-        if (request.current !== id) return
-        items = appendPage(items, page.items, connectorId)
-        cursor = page.next
-      }
+      const filled = await fillConnectorPage(items, cursor, next, pageSize, connectorId, async (pageCursor) => {
+        const page = await market.marketConnectors(await store.ready(), connectorQuery.current, pageCursor)
+        if (request.current !== id) return null
+        return page
+      })
       if (request.current !== id) return
-      setConnectors(items)
-      setConnectorCursor(cursor)
-      setConnectorPage(clampPage(next, items.items.length, pageSize, cursor !== null))
+      if (filled.stalled) {
+        setError("Couldn't load more connectors.")
+        return
+      }
+      setConnectors(filled.items)
+      setConnectorCursor(filled.cursor)
+      setConnectorPage(clampPage(next, filled.items.items.length, pageSize, filled.cursor !== null))
       setError(null)
     } catch (e) {
       if (request.current === id) setError(errorText(e))
@@ -240,102 +244,41 @@ export function MarketplaceView() {
         {searchField}
         <div className="market-split">
           <ExtensionRail selection={section} onChange={setSection} />
-          <div className="market-panel">
-            <Text size="footnote" tone="tertiary">
-              {tr(section === 'agents'
-                ? 'Agents come from the ACP registry and install on {name}.'
-                : section === 'connectors'
-                  ? 'Connectors come from the official MCP Registry and install on {name}.'
-                  : 'Skills come from Anthropic and install on {name}.').replaceAll('{name}', store.hostName)}
-            </Text>
-            {section === 'agents' && allAgents.some((b) => b.node === 'missing') ? <NodeNotice onAdd={() => setAddingNode(true)} /> : null}
-            {section === 'connectors' ? (
-              <MarketRow
-                title="Custom connector"
-                subtitle="Any MCP server: a command or a URL"
-                added={false}
-                addLabel="New"
-                icon={<TileIcon name="point.3.connected.trianglepath.dotted" />}
-                onAdd={() => setAddingConnector(true)}
-              />
-            ) : null}
-            {section === 'skills' ? (
-              <MarketRow
-                title="Your own skill"
-                subtitle="Write instructions a bot can follow"
-                added={false}
-                addLabel="New"
-                icon={<TileIcon name="square.and.pencil" />}
-                onAdd={() => setWritingSkill(true)}
-              />
-            ) : null}
-            <div key={section} className="market-panel-scroll fade-in">
-              {section === 'agents' ? (
-                agents.length === 0 ? (
-                  <Text tone="secondary">{query ? tr('No agents match “{query}”.').replaceAll('{query}', query) : tr('No agents yet.')}</Text>
-                ) : (
-                  <div className="agent-grid">
-                    {agentRows.map((b) => <AgentCard key={b.id} backend={b} onClick={() => setAgent(b)} />)}
-                    <PageSpacers count={pagePad(agents.length, agentRows.length, pageSize)} kind="agent" />
-                  </div>
-                )
-              ) : null}
-              {section === 'agents' ? (
-                <PageBar page={agentPage} count={agents.length} pageSize={pageSize} onPage={(next) => setAgentPage(clampPage(next, agents.length, pageSize))} onPageSize={changePageSize} />
-              ) : null}
-              {section === 'connectors' ? (
-                loadingConnectors || connectorPending ? (
-                  <SkeletonGrid />
-                ) : connectors.items.length === 0 ? (
-                  <Text tone="secondary">{query ? tr('No connectors match “{query}”.').replaceAll('{query}', query) : tr(`Couldn't load connectors.`)}</Text>
-                ) : (
-                  <ItemGrid>
-                    {connectorRows.map((c) => (
-                      <MarketRow
-                        key={c.name}
-                        title={c.title}
-                        subtitle={c.description ?? c.name}
-                        added={c.installed}
-                        icon={<ServiceLogo website={c.website} name={c.title} registryName={c.name} />}
-                        onAdd={() => setInstalling(c)}
-                      />
-                    ))}
-                    <PageSpacers count={pagePad(connectors.items.length, connectorRows.length, pageSize)} kind="row" />
-                  </ItemGrid>
-                )
-              ) : null}
-              {section === 'connectors' && !loadingConnectors ? (
-                <PageBar page={connectorPage} count={connectors.items.length} pageSize={pageSize} hasMore={connectorCursor !== null} loading={loadingMore} onPage={(next) => void showConnectorPage(next)} onPageSize={changePageSize} />
-              ) : null}
-              {section === 'skills' ? (
-                loadingSkills ? (
-                  <SkeletonGrid />
-                ) : shownSkills.length === 0 ? (
-                  query ? <Text tone="secondary">{tr('No skills match “{query}”.').replaceAll('{query}', query)}</Text> : null
-                ) : (
-                  <ItemGrid>
-                    {skillRows.map((s) => (
-                      <MarketRow
-                        key={s.source}
-                        title={s.name}
-                        subtitle={s.description}
-                        added={s.installed || plugins.installedSkills.some((i) => i.id === s.source.toLowerCase())}
-                        busy={busySkill === s.source}
-                        icon={<SkillGlyph />}
-                        onAdd={() => void installSkill(s)}
-                        onOpen={() => setViewingSkill(s)}
-                      />
-                    ))}
-                    <PageSpacers count={pagePad(shownSkills.length, skillRows.length, pageSize)} kind="row" />
-                  </ItemGrid>
-                )
-              ) : null}
-              {section === 'skills' && !loadingSkills ? (
-                <PageBar page={skillPage} count={shownSkills.length} pageSize={pageSize} onPage={(next) => setSkillPage(clampPage(next, shownSkills.length, pageSize))} onPageSize={changePageSize} />
-              ) : null}
-            </div>
-            {error ? <Text size="footnote" tone="danger">{error}</Text> : null}
-          </div>
+          <MarketPanel
+            section={section}
+            hostName={store.hostName}
+            needsNode={allAgents.some((b) => b.node === 'missing')}
+            query={query}
+            agents={agents}
+            agentRows={agentRows}
+            agentPage={agentPage}
+            connectors={connectors}
+            connectorRows={connectorRows}
+            connectorPage={connectorPage}
+            connectorCursor={connectorCursor}
+            connectorPending={connectorPending}
+            shownSkills={shownSkills}
+            skillRows={skillRows}
+            skillPage={skillPage}
+            installedSkillIds={plugins.installedSkills.map((s) => s.id)}
+            busySkill={busySkill}
+            loadingConnectors={loadingConnectors}
+            loadingMore={loadingMore}
+            loadingSkills={loadingSkills}
+            pageSize={pageSize}
+            error={error}
+            onAddNode={() => setAddingNode(true)}
+            onAddConnector={() => setAddingConnector(true)}
+            onWriteSkill={() => setWritingSkill(true)}
+            onAgent={setAgent}
+            onInstall={setInstalling}
+            onInstallSkill={(s) => void installSkill(s)}
+            onViewSkill={setViewingSkill}
+            onAgentPage={(next) => setAgentPage(clampPage(next, agents.length, pageSize))}
+            onConnectorPage={(next) => void showConnectorPage(next)}
+            onSkillPage={setSkillPage}
+            onPageSize={changePageSize}
+          />
         </div>
       </div>
       {/* Dismissing slides the sheet away; clearing the caller's state would cut it off. */}
@@ -367,52 +310,6 @@ export function MarketplaceView() {
         {agent ? <AgentSheet key={agent.id} initial={agent} /> : null}
       </FormSheet>
     </>
-  )
-}
-
-function pagePad(count: number, shown: number, size: number) {
-  return count > size ? Math.max(0, size - shown) : 0
-}
-
-function PageSpacers({ count, kind }: { count: number; kind: 'agent' | 'row' }) {
-  if (count <= 0) return null
-  return (
-    <>
-      {Array.from({ length: count }, (_, i) => kind === 'agent' ? (
-        <div key={i} className="agent-card page-spacer" aria-hidden="true">
-          <AgentTile registry={null} icon={24} tile={40} radius={11} />
-          <VStack as="span" align="flex-start" gap={3}>
-            <Text size="subheadline" weight="semibold" className="agent-card-line">&nbsp;</Text>
-            <Text size="caption" className="agent-card-line">&nbsp;</Text>
-          </VStack>
-        </div>
-      ) : (
-        <div key={i} className="market-row page-spacer" aria-hidden="true">
-          <div className="market-row-icon" />
-          <VStack gap={2} grow>
-            <Text size="body" weight="medium">&nbsp;</Text>
-            <Text size="subheadline">&nbsp;</Text>
-          </VStack>
-        </div>
-      ))}
-    </>
-  )
-}
-
-function AgentCard({ backend, onClick }: { backend: Backend; onClick: () => void }) {
-  const status = backend.installed !== true && backend.curated === true ? 'Not installed'
-    : backend.node === 'missing' ? 'Needs Node.js'
-    : backend.installed !== true ? 'Sets up on first use'
-    : backend.signedIn === false ? 'Not signed in'
-    : 'Installed'
-  return (
-    <button className="agent-card" title={backend.name} onClick={onClick}>
-      <AgentTile registry={backend.registry ?? backend.id} icon={24} tile={40} radius={11} />
-      <VStack as="span" align="flex-start" gap={3} shrink>
-        <Text size="subheadline" weight="semibold" tone="text" truncate className="agent-card-line">{backend.name}</Text>
-        <Text size="caption" tone="secondary" truncate className="agent-card-line">{status}</Text>
-      </VStack>
-    </button>
   )
 }
 

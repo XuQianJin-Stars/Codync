@@ -115,11 +115,17 @@ impl App {
                             } else {
                                 m.registry = items;
                             }
-                            m.next = v["nextCursor"].as_str().filter(|c| !c.is_empty()).map(str::to_owned);
+                            let previous = m.next.clone();
+                            let next = v["nextCursor"].as_str().filter(|c| !c.is_empty()).map(str::to_owned);
+                            // The same cursor again would ask for this page forever.
+                            let stalled = more && next.is_some() && next == previous;
+                            m.next = if stalled { None } else { next };
                             m.searched.get_or_insert_with(String::new);
                             m.loading = false;
-                            m.error = None;
-                            self.continue_market_page(&mut m);
+                            m.error = stalled.then(|| "Couldn't load more connectors.".to_owned());
+                            if !stalled {
+                                self.continue_market_page(&mut m);
+                            }
                             self.overlays.insert(i, Overlay::Market(m));
                         }
                         other => self.overlays.insert(i, other),

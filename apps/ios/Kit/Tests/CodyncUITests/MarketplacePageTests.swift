@@ -32,4 +32,26 @@ private struct CatalogItem: Identifiable { let id: Int }
     #expect(!CatalogPaging.canForward(count: 8, page: 0, hasMore: false))
     #expect(!CatalogPaging.needsFetch(count: 60, page: 5))
     #expect(CatalogPaging.needsFetch(count: 60, page: 6))
+    #expect(!CatalogPaging.needsFetch(count: 0, page: 0))
+    #expect(CatalogPaging.needsFetch(count: 0, page: 1))
+}
+
+@Test @MainActor func aRepeatedCursorStopsTheFill() async {
+    var catalog = ConnectorCatalog<CatalogItem>()
+    catalog.items.replace(with: (0..<10).map { CatalogItem(id: $0) })
+    catalog.cursor = "a"
+    var stalled = false
+    do {
+        try await catalog.fill(page: 1, size: 10) { _ in
+            ((10..<12).map { CatalogItem(id: $0) }, "a")
+        }
+    } catch is CatalogStall {
+        stalled = true
+    } catch {
+        Issue.record("Unexpected error: \(error)")
+    }
+    #expect(stalled)
+    #expect(catalog.items.items.map(\.id) == Array(0..<10))
+    #expect(CatalogCursor.step(previous: "a", next: "b") == .more("b"))
+    #expect(CatalogCursor.step(previous: "a", next: nil) == .ended)
 }

@@ -283,9 +283,40 @@ export function canPageForward(count: number, page: number, hasMore: boolean, si
   return page < pageCount(count, size, hasMore) - 1
 }
 
-/** The page starts past the rows already fetched, so the registry has to be asked. */
+/** The page starts past the rows already fetched, so the registry has to be asked. An empty first page is already settled. */
 export function needsFetch(count: number, page: number, size = MARKET_PAGE_SIZE): boolean {
-  return page * size >= count
+  const start = Math.max(0, page) * size
+  return start > 0 && start >= count
+}
+
+export type CursorStep = { kind: 'more'; cursor: string } | { kind: 'ended' } | { kind: 'stalled' }
+
+/** A blank cursor ends the list. The same cursor again is a stall, not another page. */
+export function cursorStep(previous: string, next: string | null | undefined): CursorStep {
+  if (!next) return { kind: 'ended' }
+  return next === previous ? { kind: 'stalled' } : { kind: 'more', cursor: next }
+}
+
+/** Pulls registry pages until `page` is filled. A repeated cursor stops the load instead of asking forever. */
+export async function fillConnectorPage<T>(
+  items: MarketplacePage<T>,
+  cursor: string | null,
+  page: number,
+  size: number,
+  id: (item: T) => string,
+  fetchPage: (cursor: string) => Promise<{ items: T[]; next: string | null } | null>,
+): Promise<{ items: MarketplacePage<T>; cursor: string | null; stalled: boolean }> {
+  let current = items
+  let nextCursor = cursor
+  while (nextCursor && needsFetch(current.items.length, page, size)) {
+    const loaded = await fetchPage(nextCursor)
+    if (!loaded) return { items: current, cursor: nextCursor, stalled: false }
+    const step = cursorStep(nextCursor, loaded.next)
+    if (step.kind === 'stalled') return { items: current, cursor: nextCursor, stalled: true }
+    current = appendPage(current, loaded.items, id)
+    nextCursor = step.kind === 'more' ? step.cursor : null
+  }
+  return { items: current, cursor: nextCursor, stalled: false }
 }
 
 export const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e))

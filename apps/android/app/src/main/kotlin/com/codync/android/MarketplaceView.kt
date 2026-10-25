@@ -47,6 +47,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import com.codync.android.core.AgentBackend
 import com.codync.android.core.CatalogPage
 import com.codync.android.core.CatalogPaging
+import com.codync.android.core.fillCatalog
 import com.codync.android.core.MarketConnector
 import com.codync.android.core.MarketSkill
 import com.codync.android.design.*
@@ -126,16 +127,16 @@ import kotlinx.coroutines.launch
         val request = connectorRequest
         loadingMore = true
         scope.launch {
-            var cursor = connectorCursor
             try {
-                while (cursor != null && CatalogPaging.needsFetch(connectors.items.size, next, pageSize)) {
+                val filled = fillCatalog(connectors, connectorCursor, next, pageSize, { it.name }) { cursor ->
                     val page = store.marketConnectors(connectorQuery, cursor)
-                    if (connectorRequest != request) return@launch
-                    connectors = connectors.append(page.items) { it.name }
-                    cursor = page.nextCursor?.takeIf { it.isNotBlank() && it != cursor }
-                    connectorCursor = cursor
+                    if (connectorRequest != request) throw CancellationException()
+                    page.items to page.nextCursor
                 }
                 if (connectorRequest != request) return@launch
+                if (filled.stalled) { error = "Couldn't load more connectors."; return@launch }
+                connectors = filled.page
+                connectorCursor = filled.cursor
                 connectorPage = CatalogPaging.clamp(next, connectors.items.size, pageSize, connectorCursor != null); error = null
             } catch (cancelled: CancellationException) { throw cancelled }
             catch (failure: Exception) { if (connectorRequest == request) error = failure.message ?: "Couldn't load more connectors." }
@@ -166,12 +167,7 @@ import kotlinx.coroutines.launch
                 val next = skillPage + if (forward) 1 else -1
                 if (next in 0 until CatalogPaging.pageCount(shownSkills.size, pageSize)) skillPage = next
             }
-            ExtensionSection.Connectors -> {
-                val next = connectorPage + if (forward) 1 else -1
-                if (next < 0) return
-                connectorPage = next
-                if (CatalogPaging.needsFetch(connectors.items.size, next, pageSize)) showConnectorPage(next)
-            }
+            ExtensionSection.Connectors -> showConnectorPage(connectorPage + if (forward) 1 else -1)
         }
     }
     val shift = remember { Animatable(0f) }
@@ -248,7 +244,7 @@ import kotlinx.coroutines.launch
                 }
             }
             ExtensionSection.Connectors -> when {
-                loadingConnectors || CatalogPaging.needsFetch(connectors.items.size, connectorPage, pageSize) -> SkeletonRows()
+                loadingConnectors || (loadingMore && CatalogPaging.needsFetch(connectors.items.size, connectorPage, pageSize)) -> SkeletonRows()
                 connectors.items.isEmpty() -> Text(if (query.isEmpty()) tr("Couldn't load connectors.") else tr("No connectors match “{query}”.").replace("{query}", query), style = Type.body, color = Palette.secondary)
                 else -> {
                     Flanked(connectorPage, connectors.items.size, connectorCursor != null, loadingMore) { index ->
@@ -288,9 +284,9 @@ import kotlinx.coroutines.launch
     }
     @Composable fun Pagers() {
         when (section) {
-            ExtensionSection.Agents -> CatalogPager(agentPage, agents.size, pageSize, go = { agentPage = it }, onSize = ::changePageSize)
+            ExtensionSection.Agents -> CatalogPager(agentPage, agents.size, pageSize, go = { agentPage = CatalogPaging.clamp(it, agents.size, pageSize) }, onSize = ::changePageSize)
             ExtensionSection.Connectors -> if (!loadingConnectors) CatalogPager(connectorPage, connectors.items.size, pageSize, connectorCursor != null, loadingMore, ::showConnectorPage, ::changePageSize)
-            ExtensionSection.Skills -> if (!loadingSkills) CatalogPager(skillPage, shownSkills.size, pageSize, go = { skillPage = it }, onSize = ::changePageSize)
+            ExtensionSection.Skills -> if (!loadingSkills) CatalogPager(skillPage, shownSkills.size, pageSize, go = { skillPage = CatalogPaging.clamp(it, shownSkills.size, pageSize) }, onSize = ::changePageSize)
         }
     }
     @Composable fun SourceLine() {

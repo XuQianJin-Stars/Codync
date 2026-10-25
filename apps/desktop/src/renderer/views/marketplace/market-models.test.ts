@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { appendPage, canPageForward, clampPage, emptyPage, needsFetch, pageCount, pageItems, replacePage } from './market-models.ts'
+import { appendPage, canPageForward, clampPage, cursorStep, emptyPage, fillConnectorPage, needsFetch, pageCount, pageItems, replacePage } from './market-models.ts'
 
 test('catalog pages keep every fetched row and drop duplicates', () => {
   const first = replacePage([0, 1, 2], (n) => String(n))
@@ -33,4 +33,20 @@ test('next stays available while the registry has another page', () => {
   assert.equal(canPageForward(60, 5, true), true)
   assert.equal(needsFetch(60, 5), false)
   assert.equal(needsFetch(60, 6), true)
+  assert.equal(needsFetch(0, 0), false)
+  assert.equal(needsFetch(0, 1), true)
+})
+
+test('a repeated registry cursor stops the fill', async () => {
+  const page = replacePage([0, 1, 2, 3, 4, 5, 6, 7, 8, 9], (n) => String(n))
+  let calls = 0
+  const filled = await fillConnectorPage(page, 'a', 1, 10, (n) => String(n), async () => {
+    calls += 1
+    return { items: [10, 11], next: 'a' }
+  })
+  assert.equal(filled.stalled, true)
+  assert.equal(calls, 1)
+  assert.deepEqual(filled.items.items, page.items)
+  assert.deepEqual(cursorStep('a', 'b'), { kind: 'more', cursor: 'b' })
+  assert.deepEqual(cursorStep('a', null), { kind: 'ended' })
 })

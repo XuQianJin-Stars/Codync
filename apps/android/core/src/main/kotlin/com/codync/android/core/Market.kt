@@ -53,6 +53,51 @@ object CatalogPaging {
     fun canForward(count: Int, page: Int, hasMore: Boolean, size: Int = pageSize): Boolean =
         page < pageCount(count, size, hasMore) - 1
 
-    /** The page starts past the rows already fetched, so the registry has to be asked. */
-    fun needsFetch(count: Int, page: Int, size: Int = pageSize): Boolean = page * size >= count
+    /** The page starts past the rows already fetched, so the registry has to be asked. An empty first page is already settled. */
+    fun needsFetch(count: Int, page: Int, size: Int = pageSize): Boolean {
+        val start = page.coerceAtLeast(0) * size
+        return start > 0 && start >= count
+    }
+
+    /** A blank cursor ends the list. The same cursor again is a stall, not another page. */
+    fun cursorStep(previous: String, next: String?): CursorStep {
+        if (next.isNullOrBlank()) return CursorStep.Ended
+        return if (next == previous) CursorStep.Stalled else CursorStep.More(next)
+    }
+}
+
+sealed interface CursorStep {
+    data class More(val cursor: String) : CursorStep
+    data object Ended : CursorStep
+    data object Stalled : CursorStep
+}
+
+data class CatalogFill<T>(val page: CatalogPage<T>, val cursor: String?, val stalled: Boolean)
+
+/** Pulls registry pages until `target` is filled. A repeated cursor stops the load instead of asking forever. */
+suspend fun <T> fillCatalog(
+    page: CatalogPage<T>,
+    cursor: String?,
+    target: Int,
+    size: Int,
+    id: (T) -> String,
+    fetch: suspend (String) -> Pair<List<T>, String?>,
+): CatalogFill<T> {
+    var current = page
+    var nextCursor = cursor
+    while (nextCursor != null && CatalogPaging.needsFetch(current.items.size, target, size)) {
+        val (items, next) = fetch(nextCursor)
+        when (val step = CatalogPaging.cursorStep(nextCursor, next)) {
+            is CursorStep.More -> {
+                current = current.append(items, id)
+                nextCursor = step.cursor
+            }
+            CursorStep.Ended -> {
+                current = current.append(items, id)
+                nextCursor = null
+            }
+            CursorStep.Stalled -> return CatalogFill(current, nextCursor, true)
+        }
+    }
+    return CatalogFill(current, nextCursor, false)
 }

@@ -1,5 +1,6 @@
 package com.codync.android.core
 
+import kotlinx.coroutines.runBlocking
 import org.junit.Assert.*
 import org.junit.Test
 
@@ -31,6 +32,22 @@ class MarketTest {
         assertFalse(CatalogPaging.canForward(8, 0, false))
         assertFalse(CatalogPaging.needsFetch(60, 5))
         assertTrue(CatalogPaging.needsFetch(60, 6))
+        assertFalse(CatalogPaging.needsFetch(0, 0))
+        assertTrue(CatalogPaging.needsFetch(0, 1))
+    }
+
+    @Test fun aRepeatedCursorStopsTheFill() = runBlocking {
+        val page = CatalogPage<Int>().append((0 until 10).toList()) { it.toString() }
+        var calls = 0
+        val filled = fillCatalog(page, "a", 1, 10, { it.toString() }) {
+            calls += 1
+            (10 until 12).toList() to "a"
+        }
+        assertTrue(filled.stalled)
+        assertEquals(1, calls)
+        assertEquals(10, filled.page.items.size)
+        assertEquals(CursorStep.More("b"), CatalogPaging.cursorStep("a", "b"))
+        assertEquals(CursorStep.Ended, CatalogPaging.cursorStep("a", null))
     }
     @Test fun connectorInputsRetainHostDefaultsAndUnknownAuthorizationDoesNotClaimSignIn() {
         val input = WireJson.decodeFromString<MarketInput>("""{"name":"REGION","required":true,"default":"provided-by-host","future":true}""")

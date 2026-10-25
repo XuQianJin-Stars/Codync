@@ -85,7 +85,8 @@ impl App {
     pub(super) fn continue_market_page(&mut self, m: &mut Market) {
         let (count, more) = self.market_span(m);
         let i = m.tab.index();
-        if needs_fetch(count, m.pages[i], m.page_size) && m.next.is_some() {
+        // Only the Connectors tab owns the registry cursor. Another tab's empty list must not keep paging it.
+        if m.tab == Tab::Connectors && needs_fetch(count, m.pages[i], m.page_size) && m.next.is_some() {
             self.load_more_connectors(m);
             return;
         }
@@ -392,7 +393,8 @@ fn clamp_page(page: usize, count: usize, size: usize, has_more: bool) -> usize {
 }
 
 fn needs_fetch(count: usize, page: usize, size: usize) -> bool {
-    page.saturating_mul(size.max(1)) >= count
+    let start = page.saturating_mul(size.max(1));
+    start > 0 && start >= count
 }
 
 /// The inputs of a connector's chosen way to run, defaults filled in.
@@ -433,5 +435,7 @@ mod tests {
         assert_eq!(clamp_page(9, 72, 10, true), 8);
         assert!(!needs_fetch(60, 5, 10));
         assert!(needs_fetch(60, 6, 10));
+        assert!(!needs_fetch(0, 0, 10));
+        assert!(needs_fetch(0, 1, 10));
     }
 }

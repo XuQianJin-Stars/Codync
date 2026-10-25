@@ -190,6 +190,24 @@ pub async fn skill_details(store: &crate::store::Store, b: &Value) -> Result<Val
     Ok(json!({"markdown": markdown}))
 }
 
+const MAX_SKILL_FILE: usize = 1_000_000;
+
+/// One skill file, or nothing when it is over [`MAX_SKILL_FILE`]. Reading stops at the limit.
+async fn skill_file(url: &str) -> Result<Option<Vec<u8>>> {
+    let mut response = crate::http().get(url).header("user-agent", UA).timeout(TIMEOUT).send().await?;
+    if response.content_length().is_some_and(|size| size > 1_000_000) {
+        return Ok(None);
+    }
+    let mut bytes = Vec::new();
+    while let Some(chunk) = response.chunk().await? {
+        if bytes.len().saturating_add(chunk.len()) > MAX_SKILL_FILE {
+            return Ok(None);
+        }
+        bytes.extend_from_slice(&chunk);
+    }
+    Ok(Some(bytes))
+}
+
 /// Downloads a skill folder from anthropics/skills (files up to 1 MB, two levels deep).
 async fn download_dir(repo_path: &str, dest: &std::path::Path, depth: u8) -> Result<()> {
     let listing = tree_entries(repo_path).await?;
@@ -206,11 +224,9 @@ async fn download_dir(repo_path: &str, dest: &std::path::Path, depth: u8) -> Res
             continue;
         }
         let url = format!("https://raw.githubusercontent.com/{SKILLS_REPO}/main/{}", entry.path);
-        let bytes = crate::http().get(&url).header("user-agent", UA).timeout(TIMEOUT).send().await?.bytes().await?;
-        if bytes.len() > 1_000_000 {
-            continue;
+        if let Some(bytes) = skill_file(&url).await? {
+            tokio::fs::write(dest.join(entry.name), &bytes).await?;
         }
-        tokio::fs::write(dest.join(entry.name), &bytes).await?;
     }
     Ok(())
 }
