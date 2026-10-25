@@ -106,19 +106,24 @@ impl App {
                 });
             }
             Reply::Registry { more } => {
-                if let Some(Overlay::Market(m)) =
-                    self.overlays.iter_mut().rev().find(|o| matches!(o, Overlay::Market(_)))
-                {
-                    let items = v["items"].as_array().cloned().unwrap_or_default();
-                    if more {
-                        m.registry.extend(items);
-                    } else {
-                        m.registry = items;
+                if let Some(i) = self.overlays.iter().rposition(|o| matches!(o, Overlay::Market(_))) {
+                    match self.overlays.remove(i) {
+                        Overlay::Market(mut m) => {
+                            let items = v["items"].as_array().cloned().unwrap_or_default();
+                            if more {
+                                m.registry.extend(items);
+                            } else {
+                                m.registry = items;
+                            }
+                            m.next = v["nextCursor"].as_str().filter(|c| !c.is_empty()).map(str::to_owned);
+                            m.searched.get_or_insert_with(String::new);
+                            m.loading = false;
+                            m.error = None;
+                            self.continue_market_page(&mut m);
+                            self.overlays.insert(i, Overlay::Market(m));
+                        }
+                        other => self.overlays.insert(i, other),
                     }
-                    m.next = v["nextCursor"].as_str().filter(|c| !c.is_empty()).map(str::to_owned);
-                    m.searched.get_or_insert_with(String::new);
-                    m.loading = false;
-                    m.error = None;
                 }
             }
             Reply::Skills => {

@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
-import { IconButton } from '../../components/Controls'
+import { DropdownMenu, IconButton } from '../../components/Controls'
 import { Sheet, usePresence } from '../../components/Overlay'
 import { Icon } from '../../components/Icon'
 import { HStack, Spacer, VStack } from '../../components/Stack'
 import { Text } from '../../components/Text'
 import { useTr } from '../../lib/use-language'
+import { EXTENSION_SECTIONS, PAGE_SIZES, canPageForward, clampPage, pageCount, type ExtensionSection } from './market-models'
 import { ThinkingOrb } from '../../components/ThinkingOrb'
 import './marketplace.css'
 
@@ -100,18 +101,22 @@ export function ItemRow({ title, subtitle, icon, trailing, onOpen }: {
 
 /** Placeholder rows while a list loads, shaped like the real ones. */
 export function SkeletonGrid() {
+  const tr = useTr()
   return (
-    <div className="item-grid skeleton">
-      {[0, 1, 2, 3].map((i) => (
-        <HStack key={i} gap={14} className="skeleton-row">
-          <div className="skeleton-icon" />
-          <VStack gap={8}>
-            <div className="skeleton-title" />
-            <div className="skeleton-subtitle" />
-          </VStack>
-        </HStack>
-      ))}
-    </div>
+    <VStack gap={8} aria-busy="true" aria-label={tr('Loading…')}>
+      <Text size="footnote" tone="secondary">{tr('Loading…')}</Text>
+      <div className="item-grid skeleton">
+        {[0, 1, 2, 3].map((i) => (
+          <HStack key={i} gap={14} className="skeleton-row">
+            <div className="skeleton-icon" />
+            <VStack gap={8}>
+              <div className="skeleton-title" />
+              <div className="skeleton-subtitle" />
+            </VStack>
+          </HStack>
+        ))}
+      </div>
+    </VStack>
   )
 }
 
@@ -294,6 +299,83 @@ export function useWindowHeight() {
  * A Marketplace form in its own modal card (`.codyncSheet`), as tall as its content up to
  * `height`; `fixed` keeps it at `height` for content that fills the card (a terminal).
  */
+/** Agents, Connectors, Skills: the chosen row is filled, like a side tab. */
+export function ExtensionRail({ selection, onChange }: { selection: ExtensionSection; onChange: (id: ExtensionSection) => void }) {
+  const tr = useTr()
+  return (
+    <nav className="market-rail" role="tablist" aria-label={tr('Extensions sections')}>
+      {EXTENSION_SECTIONS.map((section) => {
+        const on = section.id === selection
+        return (
+          <button key={section.id} type="button" role="tab" aria-selected={on} className={`market-rail-item${on ? ' on' : ''}`} onClick={() => onChange(section.id)}>
+            <Icon name={section.icon} size={15} />
+            <span>{tr(section.label)}</span>
+          </button>
+        )
+      })}
+    </nav>
+  )
+}
+
+/** Count, page size, previous, current / total, next, and a jump box. */
+export function PageBar({ page, count, pageSize, hasMore = false, loading = false, onPage, onPageSize }: {
+  page: number
+  count: number
+  pageSize: number
+  hasMore?: boolean
+  loading?: boolean
+  onPage: (page: number) => void
+  onPageSize: (size: number) => void
+}) {
+  const tr = useTr()
+  const [jump, setJump] = useState('')
+  const pages = pageCount(count, pageSize, hasMore)
+  const current = clampPage(page, count, pageSize, hasMore)
+  const canPrev = current > 0 && !loading
+  const canNext = canPageForward(count, current, hasMore, pageSize) && !loading
+  const commit = () => {
+    const n = Number(jump)
+    if (!Number.isInteger(n) || n < 1) return
+    onPage(n - 1)
+    setJump('')
+  }
+  return (
+    <div className="market-pager">
+      <span>{tr('{count} total').replaceAll('{count}', String(count))}</span>
+      <span className="market-pager-size">
+        <span>{tr('Per page')}</span>
+        <DropdownMenu
+          className="market-pager-size-button"
+          title={tr(`${pageSize} / page`)}
+          items={() => PAGE_SIZES.map((size) => ({ title: `${size} / page`, selected: size === pageSize, action: () => onPageSize(size) }))}
+        >
+          <span>{tr(`${pageSize} / page`)}</span>
+          <Icon name="chevron.down" size={10} weight="semibold" />
+        </DropdownMenu>
+      </span>
+      <button type="button" className="market-pager-step" disabled={!canPrev} onClick={() => onPage(current - 1)}>{tr('Previous page')}</button>
+      <span className="market-pager-fraction" aria-current="page">{current + 1} / {pages}</span>
+      <button type="button" className="market-pager-step" disabled={!canNext} onClick={() => onPage(current + 1)}>{tr(loading ? 'Loading…' : 'Next page')}</button>
+      <span className="market-pager-jump">
+        <span>{tr('Jump to')}</span>
+        <input
+          value={jump}
+          inputMode="numeric"
+          aria-label={tr('Jump to')}
+          onChange={(e) => setJump(e.target.value.replace(/\D/g, '').slice(0, 4))}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && !e.nativeEvent.isComposing) {
+              e.preventDefault()
+              commit()
+            }
+          }}
+        />
+        <button type="button" className="market-pager-step" disabled={loading} onClick={commit}>{tr('Go')}</button>
+      </span>
+    </div>
+  )
+}
+
 export function FormSheet({ open, onClose, width = 520, height = 600, fixed = false, children }: { open: boolean; onClose: () => void; width?: number; height?: number; fixed?: boolean; children: ReactNode }) {
   const windowHeight = useWindowHeight()
   const cap = Math.min(height, windowHeight - 76)

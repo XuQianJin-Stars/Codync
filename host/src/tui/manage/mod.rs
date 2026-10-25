@@ -128,6 +128,16 @@ pub enum Tab {
 
 pub const TABS: [(Tab, &str); 3] = [(Tab::Agents, "Agents"), (Tab::Connectors, "Connectors"), (Tab::Skills, "Skills")];
 
+impl Tab {
+    pub(in crate::tui) fn index(self) -> usize {
+        match self {
+            Self::Agents => 0,
+            Self::Connectors => 1,
+            Self::Skills => 2,
+        }
+    }
+}
+
 pub struct Market {
     pub tab: Tab,
     pub query: Editor,
@@ -139,6 +149,12 @@ pub struct Market {
     pub loading: bool,
     pub cursor: usize,
     pub error: Option<String>,
+    /// Page index on Agents, Connectors, then Skills.
+    pub pages: [usize; 3],
+    pub page_size: usize,
+    /// Digits typed after Ctrl+G, until Enter jumps.
+    pub jumping: bool,
+    pub jump: String,
 }
 
 pub enum Row<'a> {
@@ -148,7 +164,6 @@ pub enum Row<'a> {
     Installed(&'a Value),
     Custom,
     Registry(&'a Value),
-    More,
     OwnSkill(&'a Value),
     Skill(&'a Value),
 }

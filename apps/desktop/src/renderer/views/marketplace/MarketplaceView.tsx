@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { Backend } from '@shared/models'
 import { Button, IconButton, Spinner } from '../../components/Controls'
 import { Icon } from '../../components/Icon'
@@ -14,20 +14,21 @@ import { CustomConnectorSheet, InstallConnectorSheet, NewSkillSheet } from './Co
 import { SetupTerminalView } from './SetupTerminal'
 import { SkillSheet, type SkillRef } from './SkillSheet'
 import {
-  appendPage, emptyPage, errorText, hasHiddenItems, market, needsSignIn, replacePage, revealMore, visible,
-  type MarketConnector, type MarketSkill,
+  appendPage, clampPage, emptyPage, errorText, market, MARKET_PAGE_SIZE, needsFetch, needsSignIn, pageItems, replacePage,
+  type ExtensionSection, type MarketConnector, type MarketSkill,
 } from './market-models'
-import { AppLogo, FormSheet, ItemGrid, ItemRow, MarketRow, MarketSection, ScreenHeader, ServiceLogo, SkeletonGrid, SkillGlyph, SlideStack, TileIcon } from './pieces'
+import { AppLogo, ExtensionRail, FormSheet, ItemGrid, ItemRow, MarketRow, MarketSection, PageBar, ScreenHeader, ServiceLogo, SkeletonGrid, SkillGlyph, SlideStack, TileIcon } from './pieces'
 import { usePlugins } from './plugins'
 import { useTr } from '../../lib/use-language'
 
 const connectorId = (c: MarketConnector) => c.name
 
 /**
- * The Marketplace (Grok Bot's layout): one page of agents, connectors and
- * skills for the bots on one computer (the store in context). Installing happens on that
- * computer; each bot turns connectors and skills on in its settings. Each computer has its own,
- * opened from its heading in the sidebar.
+ * Extensions for the bots on one computer (the store in context): Agents, Connectors
+ * and Skills, one at a time. Each list turns a page; a connector page past the rows already
+ * loaded fetches the next registry page. Installing happens on that computer; each bot
+ * turns connectors and skills on in its settings. Each computer has its own, opened
+ * from its heading in the sidebar.
  */
 export function MarketplaceView() {
   const store = useStore()
@@ -51,8 +52,11 @@ export function MarketplaceView() {
   const [viewingSkill, setViewingSkill] = useState<SkillRef | null>(null)
   const [agent, setAgent] = useState<Backend | null>(null)
   const [addingNode, setAddingNode] = useState(false)
-  /** Agents shown before "Load more agents" (two rows of the grid). */
-  const [agentLimit, setAgentLimit] = useState(10)
+  const [section, setSection] = useState<ExtensionSection>('agents')
+  const [agentPage, setAgentPage] = useState(0)
+  const [connectorPage, setConnectorPage] = useState(0)
+  const [skillPage, setSkillPage] = useState(0)
+  const [pageSize, setPageSize] = useState(MARKET_PAGE_SIZE)
   const [showInstalled, setShowInstalled] = useState(false)
   const [showCredentials, setShowCredentials] = useState(false)
   const request = useRef(0)
@@ -75,6 +79,7 @@ export function MarketplaceView() {
       if (request.current !== id) return
       setConnectors(replacePage(page.items, connectorId))
       setConnectorCursor(page.next)
+      setConnectorPage(0)
       setError(null)
     } catch (e) {
       if (request.current !== id) return
@@ -86,20 +91,38 @@ export function MarketplaceView() {
     }
   }
 
-  const loadMoreConnectors = async () => {
-    if (loadingMore || loadingConnectors) return
-    if (hasHiddenItems(connectors)) {
-      setConnectors(revealMore)
+  const changePageSize = (size: number) => {
+    setPageSize(size)
+    setAgentPage(0)
+    setConnectorPage(0)
+    setSkillPage(0)
+  }
+
+  const showConnectorPage = async (next: number) => {
+    if (next < 0 || loadingMore || loadingConnectors) return
+    const id = request.current
+    let items = connectors
+    let cursor = connectorCursor
+    if (!needsFetch(items.items.length, next, pageSize)) {
+      setConnectorPage(clampPage(next, items.items.length, pageSize, cursor !== null))
       return
     }
-    if (!connectorCursor) return
-    const id = request.current
+    if (!cursor) {
+      setConnectorPage(clampPage(next, items.items.length, pageSize, false))
+      return
+    }
     setLoadingMore(true)
     try {
-      const page = await market.marketConnectors(await store.ready(), connectorQuery.current, connectorCursor)
+      while (cursor && needsFetch(items.items.length, next, pageSize)) {
+        const page = await market.marketConnectors(await store.ready(), connectorQuery.current, cursor)
+        if (request.current !== id) return
+        items = appendPage(items, page.items, connectorId)
+        cursor = page.next
+      }
       if (request.current !== id) return
-      setConnectors((old) => revealMore(appendPage(old, page.items, connectorId)))
-      setConnectorCursor(page.next)
+      setConnectors(items)
+      setConnectorCursor(cursor)
+      setConnectorPage(clampPage(next, items.items.length, pageSize, cursor !== null))
       setError(null)
     } catch (e) {
       if (request.current === id) setError(errorText(e))
@@ -180,7 +203,8 @@ export function MarketplaceView() {
         spellCheck={false}
         onChange={(e) => {
           setSearch(e.target.value)
-          setAgentLimit(10)
+          setAgentPage(0)
+          setSkillPage(0)
         }}
         onKeyDown={(e) => {
           if (e.key === 'Enter' && !e.nativeEvent.isComposing) submit(search.trim())
@@ -193,7 +217,8 @@ export function MarketplaceView() {
           className="market-search-clear"
           onClick={() => {
             setSearch('')
-            setAgentLimit(10)
+            setAgentPage(0)
+            setSkillPage(0)
             submit('')
           }}
         >
@@ -203,74 +228,28 @@ export function MarketplaceView() {
     </div>
   )
 
-  const centered = (node: ReactNode) => <HStack align="stretch" justify="center">{node}</HStack>
+  const skillRows = pageItems(shownSkills, skillPage, pageSize)
+  const agentRows = pageItems(agents, agentPage, pageSize)
+  const connectorRows = pageItems(connectors.items, connectorPage, pageSize)
+  const connectorPending = needsFetch(connectors.items.length, connectorPage, pageSize)
 
   const page = (
     <div className="market-page">
-      <div className="market-scroll">
-        <div className="market-page-content">
-          {header}
-          {searchField}
-          {agents.length > 0 ? (
-            <MarketSection title={query ? tr('Agents matching “{query}”').replaceAll('{query}', query) : 'Agents'}>
-              {allAgents.some((b) => b.node === 'missing') ? <NodeNotice onAdd={() => setAddingNode(true)} /> : null}
-              <div className="agent-grid">
-                {agents.slice(0, agentLimit).map((b) => <AgentCard key={b.id} backend={b} onClick={() => setAgent(b)} />)}
-              </div>
-              {agents.length > agentLimit ? centered(<Button kind="secondary" onClick={() => setAgentLimit((n) => n + 10)}>Load more agents</Button>) : null}
-            </MarketSection>
-          ) : null}
-          <MarketSection title="Connectors">
-            {loadingConnectors ? (
-              <SkeletonGrid />
-            ) : connectors.items.length === 0 ? (
-              <Text tone="secondary">{query ? tr('No connectors match “{query}”.').replaceAll('{query}', query) : tr(`Couldn't load connectors.`)}</Text>
-            ) : (
-              <>
-                <ItemGrid>
-                  {visible(connectors).map((c) => (
-                    <MarketRow
-                      key={c.name}
-                      title={c.title}
-                      subtitle={c.description ?? c.name}
-                      added={c.installed}
-                      icon={<ServiceLogo website={c.website} name={c.title} registryName={c.name} />}
-                      onAdd={() => setInstalling(c)}
-                    />
-                  ))}
-                </ItemGrid>
-                {hasHiddenItems(connectors) || connectorCursor
-                  ? centered(
-                      <Button kind="secondary" disabled={loadingMore} onClick={() => void loadMoreConnectors()}>
-                        {loadingMore ? 'Loading…' : 'Load more connectors'}
-                      </Button>,
-                    )
-                  : null}
-              </>
-            )}
-          </MarketSection>
-          <MarketSection title="Skills">
-            {loadingSkills ? (
-              <SkeletonGrid />
-            ) : (
-              <ItemGrid>
-                {shownSkills.map((s) => (
-                  <MarketRow
-                    key={s.source}
-                    title={s.name}
-                    subtitle={s.description}
-                    added={s.installed || plugins.installedSkills.some((i) => i.id === s.source.toLowerCase())}
-                    busy={busySkill === s.source}
-                    icon={<SkillGlyph />}
-                    onAdd={() => void installSkill(s)}
-                    onOpen={() => setViewingSkill(s)}
-                  />
-                ))}
-              </ItemGrid>
-            )}
-          </MarketSection>
-          <MarketSection title="Make your own">
-            <ItemGrid>
+      <div className="market-frame">
+        {header}
+        {searchField}
+        <div className="market-split">
+          <ExtensionRail selection={section} onChange={setSection} />
+          <div className="market-panel">
+            <Text size="footnote" tone="tertiary">
+              {tr(section === 'agents'
+                ? 'Agents come from the ACP registry and install on {name}.'
+                : section === 'connectors'
+                  ? 'Connectors come from the official MCP Registry and install on {name}.'
+                  : 'Skills come from Anthropic and install on {name}.').replaceAll('{name}', store.hostName)}
+            </Text>
+            {section === 'agents' && allAgents.some((b) => b.node === 'missing') ? <NodeNotice onAdd={() => setAddingNode(true)} /> : null}
+            {section === 'connectors' ? (
               <MarketRow
                 title="Custom connector"
                 subtitle="Any MCP server: a command or a URL"
@@ -279,6 +258,8 @@ export function MarketplaceView() {
                 icon={<TileIcon name="point.3.connected.trianglepath.dotted" />}
                 onAdd={() => setAddingConnector(true)}
               />
+            ) : null}
+            {section === 'skills' ? (
               <MarketRow
                 title="Your own skill"
                 subtitle="Write instructions a bot can follow"
@@ -287,12 +268,74 @@ export function MarketplaceView() {
                 icon={<TileIcon name="square.and.pencil" />}
                 onAdd={() => setWritingSkill(true)}
               />
-            </ItemGrid>
-          </MarketSection>
-          {error ? <Text size="footnote" tone="danger">{error}</Text> : null}
-          <Text size="footnote" tone="tertiary">
-            {tr('Connectors come from the official MCP Registry, skills from Anthropic, agents from the ACP registry. Everything installs on {name}.').replaceAll('{name}', store.hostName)}
-          </Text>
+            ) : null}
+            <div key={section} className="market-panel-scroll fade-in">
+              {section === 'agents' ? (
+                agents.length === 0 ? (
+                  <Text tone="secondary">{query ? tr('No agents match “{query}”.').replaceAll('{query}', query) : tr('No agents yet.')}</Text>
+                ) : (
+                  <div className="agent-grid">
+                    {agentRows.map((b) => <AgentCard key={b.id} backend={b} onClick={() => setAgent(b)} />)}
+                    <PageSpacers count={pagePad(agents.length, agentRows.length, pageSize)} kind="agent" />
+                  </div>
+                )
+              ) : null}
+              {section === 'agents' ? (
+                <PageBar page={agentPage} count={agents.length} pageSize={pageSize} onPage={(next) => setAgentPage(clampPage(next, agents.length, pageSize))} onPageSize={changePageSize} />
+              ) : null}
+              {section === 'connectors' ? (
+                loadingConnectors || connectorPending ? (
+                  <SkeletonGrid />
+                ) : connectors.items.length === 0 ? (
+                  <Text tone="secondary">{query ? tr('No connectors match “{query}”.').replaceAll('{query}', query) : tr(`Couldn't load connectors.`)}</Text>
+                ) : (
+                  <ItemGrid>
+                    {connectorRows.map((c) => (
+                      <MarketRow
+                        key={c.name}
+                        title={c.title}
+                        subtitle={c.description ?? c.name}
+                        added={c.installed}
+                        icon={<ServiceLogo website={c.website} name={c.title} registryName={c.name} />}
+                        onAdd={() => setInstalling(c)}
+                      />
+                    ))}
+                    <PageSpacers count={pagePad(connectors.items.length, connectorRows.length, pageSize)} kind="row" />
+                  </ItemGrid>
+                )
+              ) : null}
+              {section === 'connectors' && !loadingConnectors ? (
+                <PageBar page={connectorPage} count={connectors.items.length} pageSize={pageSize} hasMore={connectorCursor !== null} loading={loadingMore} onPage={(next) => void showConnectorPage(next)} onPageSize={changePageSize} />
+              ) : null}
+              {section === 'skills' ? (
+                loadingSkills ? (
+                  <SkeletonGrid />
+                ) : shownSkills.length === 0 ? (
+                  query ? <Text tone="secondary">{tr('No skills match “{query}”.').replaceAll('{query}', query)}</Text> : null
+                ) : (
+                  <ItemGrid>
+                    {skillRows.map((s) => (
+                      <MarketRow
+                        key={s.source}
+                        title={s.name}
+                        subtitle={s.description}
+                        added={s.installed || plugins.installedSkills.some((i) => i.id === s.source.toLowerCase())}
+                        busy={busySkill === s.source}
+                        icon={<SkillGlyph />}
+                        onAdd={() => void installSkill(s)}
+                        onOpen={() => setViewingSkill(s)}
+                      />
+                    ))}
+                    <PageSpacers count={pagePad(shownSkills.length, skillRows.length, pageSize)} kind="row" />
+                  </ItemGrid>
+                )
+              ) : null}
+              {section === 'skills' && !loadingSkills ? (
+                <PageBar page={skillPage} count={shownSkills.length} pageSize={pageSize} onPage={(next) => setSkillPage(clampPage(next, shownSkills.length, pageSize))} onPageSize={changePageSize} />
+              ) : null}
+            </div>
+            {error ? <Text size="footnote" tone="danger">{error}</Text> : null}
+          </div>
         </div>
       </div>
       {/* Dismissing slides the sheet away; clearing the caller's state would cut it off. */}
@@ -323,6 +366,35 @@ export function MarketplaceView() {
       <FormSheet open={agent !== null} onClose={() => setAgent(null)} width={560} height={560} fixed>
         {agent ? <AgentSheet key={agent.id} initial={agent} /> : null}
       </FormSheet>
+    </>
+  )
+}
+
+function pagePad(count: number, shown: number, size: number) {
+  return count > size ? Math.max(0, size - shown) : 0
+}
+
+function PageSpacers({ count, kind }: { count: number; kind: 'agent' | 'row' }) {
+  if (count <= 0) return null
+  return (
+    <>
+      {Array.from({ length: count }, (_, i) => kind === 'agent' ? (
+        <div key={i} className="agent-card page-spacer" aria-hidden="true">
+          <AgentTile registry={null} icon={24} tile={40} radius={11} />
+          <VStack as="span" align="flex-start" gap={3}>
+            <Text size="subheadline" weight="semibold" className="agent-card-line">&nbsp;</Text>
+            <Text size="caption" className="agent-card-line">&nbsp;</Text>
+          </VStack>
+        </div>
+      ) : (
+        <div key={i} className="market-row page-spacer" aria-hidden="true">
+          <div className="market-row-icon" />
+          <VStack gap={2} grow>
+            <Text size="body" weight="medium">&nbsp;</Text>
+            <Text size="subheadline">&nbsp;</Text>
+          </VStack>
+        </div>
+      ))}
     </>
   )
 }

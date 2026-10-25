@@ -261,6 +261,13 @@ pub fn market(buf: &mut Buffer, area: Rect, app: &App, m: &Market) {
         _ => tr("filter"),
     };
     field_line(buf, search, inner.y, &m.query, &placeholder, true);
+    let source = match m.tab {
+        Tab::Agents => tr("Agents come from the ACP registry and install on {name}."),
+        Tab::Connectors => tr("Connectors come from the official MCP Registry and install on {name}."),
+        Tab::Skills => tr("Skills come from Anthropic and install on {name}."),
+    };
+    let source = source.replace("{name}", &app.host);
+    put(buf, inner.x, inner.y + 1, inner.width, &truncate(&source, usize::from(inner.width)), t.dim.patch(t.panel));
     let rows = app.market_rows(m);
     let list_h = usize::from(inner.height.saturating_sub(5));
     let mut y = inner.y + 2;
@@ -306,7 +313,6 @@ pub fn market(buf: &mut Buffer, area: Rect, app: &App, m: &Market) {
                 String::new(),
             ),
             Row::Registry(c) => ("↓", s(c, "title").into(), s(c, "description").into(), String::new()),
-            Row::More => ("…", tr("Load more connectors").into_owned(), String::new(), String::new()),
             Row::OwnSkill(v) => ("✓", s(v, "name").into(), s(v, "description").into(), tr("installed").into_owned()),
             Row::Skill(v) => ("↓", s(v, "name").into(), s(v, "description").into(), String::new()),
         };
@@ -329,6 +335,10 @@ pub fn market(buf: &mut Buffer, area: Rect, app: &App, m: &Market) {
     };
     let loading = m.loading && m.tab == Tab::Connectors && !rows.is_empty();
     let registry = tr("Loading the registry…");
+    if m.error.is_none() && !m.loading {
+        let line = app.market_pager_line(m);
+        put(buf, inner.x, inner.bottom().saturating_sub(2), inner.width, &line, t.secondary.patch(t.panel));
+    }
     footer(buf, inner, m.error.as_deref().or(loading.then_some(registry.as_ref())), &keys);
 }
 

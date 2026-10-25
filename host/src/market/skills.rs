@@ -1,6 +1,6 @@
 //! Skills: the anthropics/skills catalog, downloads, hand-written skills and the profile's skills block.
 
-use super::{SKILLS_REPO, Skill, TIMEOUT, UA, get_json, save, skills, skills_dir, slug, unique_id};
+use super::{SKILLS_REPO, Skill, TIMEOUT, UA, save, skills, skills_dir, slug, unique_id};
 use crate::LockExt;
 use anyhow::{Context, Result, anyhow, bail};
 use serde_json::{Value, json};
@@ -56,6 +56,70 @@ fn body(md: &str) -> &str {
     ""
 }
 
+/// One entry on a public GitHub tree page.
+struct TreeEntry {
+    name: String,
+    path: String,
+    dir: bool,
+}
+
+/// Folders and files on the public tree page. The contents API shares a 60-request hour
+/// with every other unauthenticated call from this computer, and answers 403 once that
+/// quota is spent, so the catalog never uses it.
+async fn tree_entries(repo_path: &str) -> Result<Vec<TreeEntry>> {
+    let url = format!("https://github.com/{SKILLS_REPO}/tree/main/{repo_path}");
+    // github.com sometimes answers the first handshake with a non-TLS record. One try
+    // then surfaces as the red error under the list, so the catalog tries again.
+    let mut last = anyhow!("listing skills on GitHub");
+    for attempt in 0..3 {
+        match fetch_tree_page(&url).await {
+            Ok(html) => return parse_tree_entries(&html).context("listing skills on GitHub"),
+            Err(e) if attempt < 2 => {
+                last = e;
+                tokio::time::sleep(Duration::from_millis(300 * (attempt as u64 + 1))).await;
+            }
+            Err(e) => last = e,
+        }
+    }
+    Err(last)
+}
+
+async fn fetch_tree_page(url: &str) -> Result<String> {
+    let response = crate::http()
+        .get(url)
+        .header("user-agent", UA)
+        .timeout(TIMEOUT)
+        .send()
+        .await
+        .context("listing skills on GitHub")?;
+    response.text().await.context("listing skills on GitHub")
+}
+
+/// `items` in the tree page's embedded catalog: name, path, and whether it is a directory.
+fn parse_tree_entries(html: &str) -> Result<Vec<TreeEntry>> {
+    const MARK: &str = r#"data-target="react-app.embeddedData">"#;
+    let start = html.find(MARK).context("the skill list page has no catalog")?;
+    let json = &html[start + MARK.len()..];
+    let end = json.find("</script>").context("the skill list page has no catalog")?;
+    let value: Value = serde_json::from_str(&json[..end]).context("the skill list page")?;
+    let items = value["payload"]["codeViewTreeRoute"]["tree"]["items"]
+        .as_array()
+        .context("the skill list page has no catalog")?
+        .clone();
+    Ok(items
+        .into_iter()
+        .filter_map(|item| {
+            let name = item["name"].as_str()?.to_owned();
+            let path = item["path"].as_str()?.to_owned();
+            // Names become paths: plain file names only.
+            if name.is_empty() || name.starts_with('.') || name.contains(['/', '\\']) {
+                return None;
+            }
+            Some(TreeEntry { name, path, dir: item["contentType"] == "directory" })
+        })
+        .collect())
+}
+
 /// Skills published in anthropics/skills, with their `SKILL.md` body (cached for an hour).
 async fn catalog() -> Result<Value> {
     let cached = SKILL_CATALOG
@@ -66,16 +130,8 @@ async fn catalog() -> Result<Value> {
     let catalog = if let Some(v) = cached {
         v
     } else {
-        let dirs = get_json(&format!("https://api.github.com/repos/{SKILLS_REPO}/contents/skills"))
-            .await
-            .context("listing skills on GitHub")?;
-        let names: Vec<String> = dirs
-            .as_array()
-            .into_iter()
-            .flatten()
-            .filter(|d| d["type"] == "dir")
-            .filter_map(|d| d["name"].as_str().map(str::to_owned))
-            .collect();
+        let names: Vec<String> =
+            tree_entries("skills").await?.into_iter().filter(|entry| entry.dir).map(|entry| entry.name).collect();
         let fetches = names.iter().map(|dir| async move {
             let url = format!("https://raw.githubusercontent.com/{SKILLS_REPO}/main/skills/{dir}/SKILL.md");
             let md = crate::http().get(&url).header("user-agent", UA).timeout(TIMEOUT).send().await.ok()?.text().await.ok()?;
@@ -136,26 +192,25 @@ pub async fn skill_details(store: &crate::store::Store, b: &Value) -> Result<Val
 
 /// Downloads a skill folder from anthropics/skills (files up to 1 MB, two levels deep).
 async fn download_dir(repo_path: &str, dest: &std::path::Path, depth: u8) -> Result<()> {
-    let listing = get_json(&format!("https://api.github.com/repos/{SKILLS_REPO}/contents/{repo_path}")).await?;
+    let listing = tree_entries(repo_path).await?;
     tokio::fs::create_dir_all(dest).await?;
-    for item in listing.as_array().into_iter().flatten() {
-        let name = item["name"].as_str().unwrap_or_default();
-        // Names become paths: plain file names only.
-        if name.is_empty() || name.starts_with('.') || name.contains(['/', '\\']) {
+    for entry in listing {
+        // The page's path has to be the folder we asked for, not somewhere else.
+        if entry.path != format!("{repo_path}/{}", entry.name) {
             continue;
         }
-        match item["type"].as_str() {
-            Some("file") if item["size"].as_u64().unwrap_or(0) <= 1_000_000 => {
-                let Some(url) = item["download_url"].as_str() else { continue };
-                let bytes =
-                    crate::http().get(url).header("user-agent", UA).timeout(TIMEOUT).send().await?.bytes().await?;
-                tokio::fs::write(dest.join(name), &bytes).await?;
+        if entry.dir {
+            if depth > 0 {
+                Box::pin(download_dir(&entry.path, &dest.join(&entry.name), depth - 1)).await?;
             }
-            Some("dir") if depth > 0 => {
-                Box::pin(download_dir(&format!("{repo_path}/{name}"), &dest.join(name), depth - 1)).await?;
-            }
-            _ => {}
+            continue;
         }
+        let url = format!("https://raw.githubusercontent.com/{SKILLS_REPO}/main/{}", entry.path);
+        let bytes = crate::http().get(&url).header("user-agent", UA).timeout(TIMEOUT).send().await?.bytes().await?;
+        if bytes.len() > 1_000_000 {
+            continue;
+        }
+        tokio::fs::write(dest.join(entry.name), &bytes).await?;
     }
     Ok(())
 }
@@ -354,6 +409,20 @@ pub fn skills_brief(store: &crate::store::Store, enabled: &[String]) -> Option<S
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_public_tree_page_lists_skill_folders() {
+        let html = r#"<script type="application/json" data-target="react-app.embeddedData">{"payload":{"codeViewTreeRoute":{"tree":{"items":[
+            {"name":"pdf","path":"skills/pdf","contentType":"directory"},
+            {"name":"SKILL.md","path":"skills/pdf/SKILL.md","contentType":"file"},
+            {"name":".claude-plugin","path":"skills/.claude-plugin","contentType":"directory"},
+            {"name":"../etc","path":"skills/../etc","contentType":"file"}
+        ]}}}}</script>"#;
+        let entries = parse_tree_entries(html).expect("tree page");
+        assert_eq!(entries.len(), 2);
+        assert!(entries[0].dir && entries[0].name == "pdf" && entries[0].path == "skills/pdf");
+        assert!(!entries[1].dir && entries[1].name == "SKILL.md");
+    }
 
     #[test]
     fn front_matter_is_read() {

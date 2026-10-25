@@ -1,6 +1,6 @@
 //! The marketplace: agents, connectors and skills.
 
-use crossterm::event::{KeyCode, KeyEvent};
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use serde_json::{Value, json};
 
 use super::super::app::{After, App, Confirm, ConfirmAct, Editor, Overlay, fuzzy};
@@ -24,11 +24,112 @@ impl App {
             loading: true,
             cursor: 0,
             error: None,
+            pages: [0; 3],
+            page_size: PAGE_SIZE,
+            jumping: false,
+            jump: String::new(),
         })));
     }
 
-    /// The marketplace's rows on its current tab, filtered by the query.
+    /// The current page of the marketplace's rows.
     pub fn market_rows<'a>(&'a self, m: &'a Market) -> Vec<Row<'a>> {
+        let all = self.market_catalog(m);
+        let more = m.tab == Tab::Connectors && m.next.is_some();
+        let page = clamp_page(m.pages[m.tab.index()], all.len(), m.page_size, more);
+        let start = page.saturating_mul(m.page_size.max(1));
+        all.into_iter().skip(start).take(m.page_size.max(1)).collect()
+    }
+
+    /// Count of the current tab, and whether the connector registry has another cursor page.
+    fn market_span(&self, m: &Market) -> (usize, bool) {
+        let count = self.market_catalog(m).len();
+        (count, m.tab == Tab::Connectors && m.next.is_some())
+    }
+
+    /// The pager, in the same order as the other clients: count, size, previous, current / total, next.
+    pub fn market_pager_line(&self, m: &Market) -> String {
+        let (count, more) = self.market_span(m);
+        let pages = page_count(count, m.page_size, more);
+        let page = clamp_page(m.pages[m.tab.index()], count, m.page_size, more) + 1;
+        let size = match m.page_size {
+            6 => "6 / page",
+            20 => "20 / page",
+            50 => "50 / page",
+            _ => "10 / page",
+        };
+        let mut line = format!(
+            "{}   {} {}   {}   {page} / {pages}   {}",
+            tr("{count} total").replace("{count}", &count.to_string()),
+            tr("Per page"),
+            tr(size),
+            tr("Previous page"),
+            tr("Next page"),
+        );
+        if m.jumping {
+            use std::fmt::Write as _;
+            let _ = write!(line, "   {} {}", tr("Jump to"), m.jump);
+        }
+        line
+    }
+
+    fn load_more_connectors(&mut self, m: &mut Market) {
+        if m.loading || m.next.is_none() {
+            return;
+        }
+        m.loading = true;
+        let search = m.searched.clone().unwrap_or_default();
+        self.sheet("marketConnectors", json!({"search": search, "cursor": m.next}), Reply::Registry { more: true });
+    }
+
+    /// After a registry page arrives, keep fetching until the open page is filled or the cursor ends.
+    pub(super) fn continue_market_page(&mut self, m: &mut Market) {
+        let (count, more) = self.market_span(m);
+        let i = m.tab.index();
+        if needs_fetch(count, m.pages[i], m.page_size) && m.next.is_some() {
+            self.load_more_connectors(m);
+            return;
+        }
+        m.pages[i] = clamp_page(m.pages[i], count, m.page_size, more);
+    }
+
+    fn turn_market_page(&mut self, m: &mut Market, forward: bool) {
+        let (count, more) = self.market_span(m);
+        let pages = page_count(count, m.page_size, more);
+        let i = m.tab.index();
+        if forward {
+            if m.pages[i] + 1 >= pages {
+                return;
+            }
+            m.pages[i] += 1;
+            m.cursor = 0;
+            if needs_fetch(count, m.pages[i], m.page_size) {
+                self.load_more_connectors(m);
+            }
+        } else if m.pages[i] > 0 {
+            m.pages[i] -= 1;
+            m.cursor = 0;
+        }
+    }
+
+    fn jump_market(&mut self, m: &mut Market) {
+        let Some(n) = m.jump.parse::<usize>().ok().filter(|n| *n >= 1) else {
+            m.jumping = false;
+            m.jump.clear();
+            return;
+        };
+        m.jumping = false;
+        m.jump.clear();
+        let (count, more) = self.market_span(m);
+        let i = m.tab.index();
+        m.pages[i] = clamp_page(n - 1, count, m.page_size, more);
+        m.cursor = 0;
+        if needs_fetch(count, m.pages[i], m.page_size) {
+            self.load_more_connectors(m);
+        }
+    }
+
+    /// Every row on the current tab, before the page window.
+    fn market_catalog<'a>(&'a self, m: &'a Market) -> Vec<Row<'a>> {
         let q = m.query.text.trim();
         let hit = |v: &Value, keys: &[&str]| {
             let fields: Vec<&str> = keys.iter().map(|k| v[*k].as_str().unwrap_or_default()).collect();
@@ -54,9 +155,6 @@ impl App {
                         .filter(|c| !installed.contains(&c["name"].as_str().unwrap_or_default()))
                         .map(Row::Registry),
                 );
-                if m.next.is_some() {
-                    rows.push(Row::More);
-                }
                 rows
             }
             Tab::Skills => {
@@ -82,7 +180,24 @@ impl App {
     }
 
     pub(in crate::tui) fn market_key(&mut self, mut m: Box<Market>, k: KeyEvent) -> Option<Overlay> {
+        if m.jumping {
+            match k.code {
+                KeyCode::Esc => {
+                    m.jumping = false;
+                    m.jump.clear();
+                }
+                KeyCode::Enter => self.jump_market(&mut m),
+                KeyCode::Backspace => {
+                    m.jump.pop();
+                }
+                KeyCode::Char(c) if c.is_ascii_digit() && m.jump.len() < 4 => m.jump.push(c),
+                _ => {}
+            }
+            return Some(Overlay::Market(m));
+        }
         let n = self.market_rows(&m).len();
+        let alt = k.modifiers.contains(KeyModifiers::ALT);
+        let ctrl_key = k.modifiers.contains(KeyModifiers::CONTROL);
         match k.code {
             KeyCode::Esc => return None,
             KeyCode::Tab | KeyCode::BackTab => {
@@ -93,6 +208,18 @@ impl App {
             }
             KeyCode::Down => m.cursor = (m.cursor + 1).min(n.saturating_sub(1)),
             KeyCode::Up => m.cursor = m.cursor.saturating_sub(1),
+            KeyCode::PageDown => self.turn_market_page(&mut m, true),
+            KeyCode::PageUp => self.turn_market_page(&mut m, false),
+            KeyCode::Char('g') if ctrl_key => {
+                m.jumping = true;
+                m.jump.clear();
+            }
+            KeyCode::Char('s') if alt => {
+                let i = PAGE_SIZES.iter().position(|s| *s == m.page_size).unwrap_or(0);
+                m.page_size = PAGE_SIZES[(i + 1) % PAGE_SIZES.len()];
+                m.pages = [0; 3];
+                m.cursor = 0;
+            }
             KeyCode::Char('n' | 'j') if ctrl(k) => m.cursor = (m.cursor + 1).min(n.saturating_sub(1)),
             KeyCode::Char('p') if ctrl(k) => m.cursor = m.cursor.saturating_sub(1),
             KeyCode::Char('r') if ctrl(k) => {
@@ -106,6 +233,7 @@ impl App {
                 m.cursor = 0;
                 m.registry.clear();
                 m.next = None;
+                m.pages[Tab::Connectors.index()] = 0;
                 self.sheet("marketConnectors", json!({"search": search}), Reply::Registry { more: false });
                 m.searched = Some(search);
             }
@@ -135,20 +263,20 @@ impl App {
             _ => {
                 if m.query.key(k) {
                     m.cursor = 0;
+                    m.pages[m.tab.index()] = 0;
                 }
             }
         }
         Some(Overlay::Market(m))
     }
 
-    fn market_enter(&mut self, mut m: Box<Market>) -> Option<Overlay> {
+    fn market_enter(&mut self, m: Box<Market>) -> Option<Overlay> {
         enum Act {
             Node,
             Agent(String),
             SignIn(String),
             Custom,
             Install(Value),
-            More,
             Skill(Value, bool),
             None,
         }
@@ -158,7 +286,6 @@ impl App {
             Some(Row::Installed(c)) if c["auth"] == "signedOut" => Act::SignIn(s(c, "id")),
             Some(Row::Custom) => Act::Custom,
             Some(Row::Registry(c)) => Act::Install((*c).clone()),
-            Some(Row::More) => Act::More,
             Some(Row::Skill(v)) => Act::Skill((*v).clone(), true),
             Some(Row::OwnSkill(v)) => Act::Skill((*v).clone(), false),
             _ => Act::None,
@@ -239,15 +366,6 @@ impl App {
                     return None;
                 }
             }
-            Act::More => {
-                m.loading = true;
-                let search = m.searched.clone().unwrap_or_default();
-                self.sheet(
-                    "marketConnectors",
-                    json!({"search": search, "cursor": m.next}),
-                    Reply::Registry { more: true },
-                );
-            }
             Act::Skill(v, catalog) => {
                 self.overlays.push(Overlay::Market(m));
                 self.open_skill(&v, catalog);
@@ -257,6 +375,24 @@ impl App {
         }
         Some(Overlay::Market(m))
     }
+}
+
+const PAGE_SIZE: usize = 10;
+const PAGE_SIZES: [usize; 4] = [6, 10, 20, 50];
+
+/// Loaded rows split into pages. While the registry still has a cursor, one more page is offered.
+fn page_count(count: usize, size: usize, has_more: bool) -> usize {
+    let size = size.max(1);
+    let loaded = if count == 0 { 1 } else { count.div_ceil(size) };
+    if has_more { loaded + 1 } else { loaded }
+}
+
+fn clamp_page(page: usize, count: usize, size: usize, has_more: bool) -> usize {
+    page.min(page_count(count, size, has_more).saturating_sub(1))
+}
+
+fn needs_fetch(count: usize, page: usize, size: usize) -> bool {
+    page.saturating_mul(size.max(1)) >= count
 }
 
 /// The inputs of a connector's chosen way to run, defaults filled in.
@@ -281,4 +417,21 @@ pub(super) fn connector_inputs(f: &mut Fields) {
         })
         .collect();
     f.cursor = f.cursor.min(f.offset() + f.inputs.len().saturating_sub(1));
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{clamp_page, needs_fetch, page_count};
+
+    #[test]
+    fn forty_seven_agents_are_five_pages() {
+        assert_eq!(page_count(47, 10, false), 5);
+        assert_eq!(page_count(19, 10, false), 2);
+        assert_eq!(page_count(0, 10, false), 1);
+        assert_eq!(page_count(72, 10, true), 9);
+        assert_eq!(clamp_page(9, 47, 10, false), 4);
+        assert_eq!(clamp_page(9, 72, 10, true), 8);
+        assert!(!needs_fetch(60, 5, 10));
+        assert!(needs_fetch(60, 6, 10));
+    }
 }

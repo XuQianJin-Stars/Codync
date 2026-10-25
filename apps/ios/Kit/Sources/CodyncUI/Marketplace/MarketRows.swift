@@ -60,6 +60,24 @@ struct AgentCard: View {
     }
 }
 
+/// The size of an agent tile, with nothing to tap. A short last page keeps a full page of rows, so the bar under it stays put.
+struct AgentCardSpacer: View {
+    var body: some View {
+        VStack(spacing: 12) {
+            Color.clear.frame(width: 64, height: 64)
+            VStack(spacing: 2) {
+                Text(" ").font(.subheadline.weight(.semibold)).lineLimit(1)
+                Text(" ").font(.caption).lineLimit(1)
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 18)
+        .padding(.horizontal, 10)
+        .hidden()
+        .accessibilityHidden(true)
+    }
+}
+
 struct MarketRow<Icon: View>: View {
     let title: String
     let subtitle: String
@@ -111,11 +129,61 @@ struct MarketRow<Icon: View>: View {
     }
 }
 
+/// The size of a catalog row, with nothing to tap. A short last page keeps a full page of rows.
+struct MarketRowSpacer: View {
+    var body: some View {
+        HStack(spacing: 14) {
+            Color.clear.frame(width: 46, height: 46)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(" ").font(.body.weight(.medium)).lineLimit(1)
+                Text(" ").font(.subheadline).lineLimit(1)
+            }
+            Spacer(minLength: 8)
+            Text(" ").font(.subheadline.weight(.semibold)).padding(.horizontal, 16).padding(.vertical, 7)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .hidden()
+        .accessibilityHidden(true)
+    }
+}
+
+/// Previous or next, beside the list on a phone. Gray so it shows on the page, not the white circle that sits inside the bar.
+struct PageEdgeButton: View {
+    let title: String
+    let systemImage: String
+    let enabled: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: systemImage)
+                .font(.footnote.weight(.semibold))
+                .frame(width: 32, height: 32)
+                .foregroundStyle(enabled ? Palette.text : Palette.tertiary)
+                .background(Palette.bubbleAgent, in: Circle())
+                .opacity(enabled ? 1 : 0.45)
+        }
+        .buttonStyle(PressScale())
+        .disabled(!enabled)
+        .accessibilityLabel(L10n.tr(title))
+    }
+}
+
 /// Placeholder rows while a list loads, shaped like the real ones.
 struct SkeletonGrid: View {
     @State private var dim = false
 
     var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(L10n.tr("Loading…")).font(.footnote).foregroundStyle(Palette.secondary)
+            rows
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(L10n.tr("Loading…"))
+    }
+
+    private var rows: some View {
         ItemGrid {
             ForEach(0..<4, id: \.self) { _ in
                 HStack(spacing: 14) {
@@ -221,5 +289,189 @@ struct WebLink: View {
             .foregroundStyle(Palette.text)
             .underline()
             .help(url.absoluteString)
+    }
+}
+
+/// Count, page size, previous, current / total, next, and a jump box.
+struct CatalogPager: View {
+    let page: Int
+    let count: Int
+    let pageSize: Int
+    var hasMore = false
+    var loading = false
+    let go: (Int) -> Void
+    let onSize: (Int) -> Void
+    @State private var jump = ""
+    @Environment(\.horizontalSizeClass) private var sizeClass
+
+    private var pages: Int { CatalogPaging.pageCount(count, size: pageSize, hasMore: hasMore) }
+    private var current: Int { CatalogPaging.clamp(page: page, count: count, size: pageSize, hasMore: hasMore) }
+    private var compact: Bool { sizeClass == .compact }
+
+    var body: some View {
+        Group {
+            if compact {
+                // Previous and next sit beside the list. The capsule keeps the page size and the page number; the jump box drops out when the row cannot fit. No spacers in the measured row.
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 16) {
+                        sizeLabel
+                        fraction
+                        phoneJump
+                    }
+                    .fixedSize(horizontal: true, vertical: false)
+                    HStack(spacing: 12) {
+                        sizeLabel
+                        Spacer(minLength: 12)
+                        fraction
+                    }
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 8)
+                .background(Palette.bubbleAgent, in: Capsule())
+            } else {
+                controls
+            }
+        }
+        .font(.footnote)
+    }
+
+    private var controls: some View {
+        HStack(spacing: 12) {
+            total
+            sizePicker
+            navigation
+            jumpBox
+        }
+    }
+
+    private var total: some View {
+        Text(L10n.tr("{count} total").replacingOccurrences(of: "{count}", with: String(count)))
+            .foregroundStyle(Palette.secondary)
+    }
+
+    private var fraction: some View {
+        Text("\(current + 1) / \(pages)")
+            .font(.subheadline.weight(.semibold))
+            .foregroundStyle(Palette.text)
+            .monospacedDigit()
+            .accessibilityAddTraits(.isSelected)
+    }
+
+    /// The size menu, sitting on the capsule with no chip of its own.
+    private var sizeLabel: some View {
+        DropdownMenu {
+            CatalogPaging.pageSizes.map { size in
+                MenuItem("\(size) / page", selected: size == pageSize) { onSize(size) }
+            }
+        } label: {
+            HStack(spacing: 2) {
+                Text(L10n.tr("\(pageSize) / page"))
+                Image(systemName: "chevron.down").font(.caption2.weight(.semibold))
+            }
+            .foregroundStyle(Palette.secondary)
+        }
+    }
+
+    private var phoneJump: some View {
+        HStack(spacing: 6) {
+            Text(L10n.tr("Jump to")).foregroundStyle(Palette.secondary)
+            TextField("", text: $jump)
+                .multilineTextAlignment(.center)
+                .textFieldStyle(.plain)
+                .plainTextInput()
+                .keyboardType(.numberPad)
+                .frame(width: 36, height: 28)
+                .background(Palette.background, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .onChange(of: jump) { _, next in
+                    let digits = String(next.filter(\.isNumber).prefix(4))
+                    if digits != next { jump = digits }
+                }
+            Button(action: commit) {
+                Text(L10n.tr("Go"))
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(loading ? Palette.tertiary : Palette.text)
+                    .padding(.horizontal, 12)
+                    .frame(height: 28)
+                    .background(Palette.background, in: Capsule())
+            }
+            .buttonStyle(PressScale())
+            .disabled(loading)
+        }
+    }
+
+    private var sizePicker: some View {
+        HStack(spacing: 6) {
+            Text(L10n.tr("Per page")).foregroundStyle(Palette.secondary)
+            DropdownMenu {
+                CatalogPaging.pageSizes.map { size in
+                    MenuItem("\(size) / page", selected: size == pageSize) { onSize(size) }
+                }
+            } label: {
+                HStack(spacing: 4) {
+                    Text(L10n.tr("\(pageSize) / page"))
+                    Image(systemName: "chevron.down").font(.caption2.weight(.semibold))
+                }
+                .foregroundStyle(Palette.text)
+                .padding(.horizontal, 10)
+                .frame(height: 28)
+                .background(Palette.bubbleAgent, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            }
+        }
+    }
+
+    private var navigation: some View {
+        HStack(spacing: 4) {
+            step("Previous page", systemImage: compact ? "chevron.left" : nil, enabled: current > 0 && !loading) { go(current - 1) }
+            Text("\(current + 1) / \(pages)")
+                .foregroundStyle(Palette.text)
+                .monospacedDigit()
+                .frame(minWidth: 44)
+                .accessibilityAddTraits(.isSelected)
+            step(loading ? "Loading…" : "Next page", systemImage: compact ? "chevron.right" : nil, enabled: CatalogPaging.canForward(count: count, page: current, hasMore: hasMore, size: pageSize) && !loading) {
+                go(current + 1)
+            }
+        }
+    }
+
+    private var jumpBox: some View {
+        HStack(spacing: 6) {
+            Text(L10n.tr("Jump to")).foregroundStyle(Palette.secondary)
+            TextField("", text: $jump)
+                .multilineTextAlignment(.center)
+                .textFieldStyle(.plain)
+                .plainTextInput()
+                .keyboardType(.numberPad)
+                .frame(width: 44, height: 28)
+                .background(Palette.bubbleAgent, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .onChange(of: jump) { _, next in
+                    let digits = String(next.filter(\.isNumber).prefix(4))
+                    if digits != next { jump = digits }
+                }
+            step("Go", enabled: !loading) { commit() }
+        }
+    }
+
+    private func commit() {
+        guard let n = Int(jump), n >= 1 else { return }
+        go(n - 1)
+        jump = ""
+    }
+
+    private func step(_ title: String, systemImage: String? = nil, enabled: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Group {
+                if let systemImage {
+                    Image(systemName: systemImage).font(.footnote.weight(.semibold)).frame(width: 28, height: 28)
+                } else {
+                    Text(L10n.tr(title)).padding(.horizontal, 10).padding(.vertical, 6)
+                }
+            }
+            .foregroundStyle(enabled ? Palette.secondary : Palette.tertiary)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(PressScale())
+        .disabled(!enabled)
+        .accessibilityLabel(L10n.tr(title))
     }
 }
