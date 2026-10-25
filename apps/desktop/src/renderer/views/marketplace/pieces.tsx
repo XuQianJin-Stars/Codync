@@ -343,9 +343,9 @@ export function PageBar({ page, count, pageSize, hasMore = false, loading = fals
           <Icon name="chevron.down" size={10} weight="semibold" />
         </DropdownMenu>
       </span>
-      <button type="button" className="market-pager-step" disabled={!canPrev} onClick={() => onPage(current - 1)}>{tr('Previous page')}</button>
+      <IconButton title="Previous page" icon="chevron.left" disabled={!canPrev} onClick={() => onPage(current - 1)} />
       <span className="market-pager-fraction" aria-current="page">{current + 1} / {pages}</span>
-      <button type="button" className="market-pager-step" disabled={!canNext} onClick={() => onPage(current + 1)}>{tr(loading ? 'Loading…' : 'Next page')}</button>
+      <IconButton title={loading ? 'Loading…' : 'Next page'} icon="chevron.right" disabled={!canNext} onClick={() => onPage(current + 1)} />
     </div>
   )
 }

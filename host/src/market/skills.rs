@@ -426,6 +426,47 @@ pub fn skills_brief(store: &crate::store::Store, enabled: &[String]) -> Option<S
 mod tests {
     use super::*;
 
+    /// Serves `/declared` (a Content-Length over the limit), `/streamed` (chunks past the limit, no
+    /// length) and anything else as a five-byte body.
+    async fn file_server() -> String {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.expect("a local port");
+        let base = format!("http://{}", listener.local_addr().expect("a bound address"));
+        tokio::spawn(async move {
+            while let Ok((mut socket, _)) = listener.accept().await {
+                tokio::spawn(async move {
+                    let mut request = [0u8; 1024];
+                    let read = socket.read(&mut request).await.unwrap_or(0);
+                    let head = String::from_utf8_lossy(&request[..read]).into_owned();
+                    // The client hangs up as soon as it sees too much; later writes may fail.
+                    if head.starts_with("GET /declared") {
+                        let _ = socket.write_all(b"HTTP/1.1 200 OK\r\ncontent-length: 2000000\r\n\r\n").await;
+                    } else if head.starts_with("GET /streamed") {
+                        let _ = socket.write_all(b"HTTP/1.1 200 OK\r\ntransfer-encoding: chunked\r\n\r\n").await;
+                        let chunk = vec![b'x'; 65_536];
+                        for _ in 0..17 {
+                            let _ = socket.write_all(b"10000\r\n").await;
+                            let _ = socket.write_all(&chunk).await;
+                            let _ = socket.write_all(b"\r\n").await;
+                        }
+                        let _ = socket.write_all(b"0\r\n\r\n").await;
+                    } else {
+                        let _ = socket.write_all(b"HTTP/1.1 200 OK\r\ncontent-length: 5\r\n\r\nhello").await;
+                    }
+                });
+            }
+        });
+        base
+    }
+
+    #[tokio::test]
+    async fn a_skill_file_over_the_limit_is_skipped_without_reading_it_all() {
+        let base = file_server().await;
+        assert_eq!(skill_file(&format!("{base}/declared")).await.expect("declared"), None);
+        assert_eq!(skill_file(&format!("{base}/streamed")).await.expect("streamed"), None);
+        assert_eq!(skill_file(&format!("{base}/small")).await.expect("small").as_deref(), Some(&b"hello"[..]));
+    }
+
     #[test]
     fn the_public_tree_page_lists_skill_folders() {
         let html = r#"<script type="application/json" data-target="react-app.embeddedData">{"payload":{"codeViewTreeRoute":{"tree":{"items":[

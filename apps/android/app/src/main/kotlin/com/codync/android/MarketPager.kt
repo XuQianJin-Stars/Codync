@@ -160,16 +160,10 @@ internal enum class ExtensionSection(val title: String, val icon: String, val so
             itemVerticalAlignment = Alignment.CenterVertically) {
             Text(total, style = Type.footnote, color = Palette.secondary)
             SizeMenu()
-            PagerStep("Previous page", canPrev) { go(current - 1) }
+            IconButton("Previous page", "chevron.left", enabled = canPrev) { go(current - 1) }
             Text("${current + 1} / $pages", style = Type.footnote, color = Palette.text)
-            PagerStep(if (loading) "Loading…" else "Next page", canNext) { go(current + 1) }
+            IconButton(if (loading) "Loading…" else "Next page", "chevron.right", enabled = canNext) { go(current + 1) }
         }
     }
 }
 
-@Composable private fun PagerStep(title: String, enabled: Boolean, action: () -> Unit) {
-    Box(Modifier.clip(RoundedRectangle(8.dp)).plainButton(enabled = enabled, action = action).padding(horizontal = 10.dp, vertical = 6.dp),
-        contentAlignment = Alignment.Center) {
-        Text(tr(title), style = Type.subheadline, color = if (enabled) Palette.secondary else Palette.tertiary, maxLines = 1)
-    }
-}

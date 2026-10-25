@@ -362,27 +362,15 @@ struct CatalogPager: View {
 
     private var navigation: some View {
         HStack(spacing: 4) {
-            step("Previous page", enabled: current > 0 && !loading) { go(current - 1) }
+            IconButton("Previous page", systemImage: "chevron.left") { go(current - 1) }
+                .disabled(current == 0 || loading)
             Text("\(current + 1) / \(pages)")
                 .foregroundStyle(Palette.text)
                 .monospacedDigit()
                 .frame(minWidth: 44)
                 .accessibilityAddTraits(.isSelected)
-            step(loading ? "Loading…" : "Next page", enabled: CatalogPaging.canForward(count: count, page: current, hasMore: hasMore, size: pageSize) && !loading) {
-                go(current + 1)
-            }
+            IconButton(loading ? "Loading…" : "Next page", systemImage: "chevron.right") { go(current + 1) }
+                .disabled(!CatalogPaging.canForward(count: count, page: current, hasMore: hasMore, size: pageSize) || loading)
         }
-    }
-
-    private func step(_ title: String, enabled: Bool, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Text(L10n.tr(title))
-                .padding(.horizontal, 10)
-                .padding(.vertical, 6)
-                .foregroundStyle(enabled ? Palette.secondary : Palette.tertiary)
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(PressScale())
-        .disabled(!enabled)
     }
 }

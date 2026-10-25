@@ -90,26 +90,6 @@
   font-variant-numeric: tabular-nums;
   text-align: center;
 }
-.market-pager-step {
-  color: var(--secondary);
-  padding: 6px 10px;
-  border: 0;
-  border-radius: var(--radius-s);
-  background: transparent;
-  font: inherit;
-  transition: background-color var(--hover), color var(--hover), transform var(--press);
-}
-.market-pager-step:hover:not(:disabled) {
-  background: var(--bubble-agent);
-  color: var(--text);
-}
-.market-pager-step:active:not(:disabled) {
-  transform: scale(0.98);
-}
-.market-pager-step:disabled {
-  color: var(--tertiary);
-  opacity: 0.45;
-}
 /* Fills a short last page to a full page's height, so the pager stays put. */
 .page-spacer {
   visibility: hidden;
