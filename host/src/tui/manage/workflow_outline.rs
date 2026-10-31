@@ -359,6 +359,7 @@ mod tests {
             text: Editor::default(),
             saving: false,
             dirty: false,
+            leaving: false,
         };
         edit.load_text();
         edit
@@ -371,6 +372,8 @@ mod tests {
             page: WorkflowPage::Edit(Box::new(edit)),
             notice: None,
             error: None,
+            versions: None,
+            version_cursor: 0,
         };
         app.overlays.push(Overlay::Workflows(Box::new(sheet)));
         app.on_key(KeyEvent::from(key));
@@ -398,6 +401,8 @@ mod tests {
             page: WorkflowPage::Edit(Box::new(edit_of(graph, 2))),
             notice: None,
             error: None,
+            versions: None,
+            version_cursor: 0,
         };
         app.overlays.push(Overlay::Workflows(Box::new(sheet)));
         app.on_key(KeyEvent::from(KeyCode::Char('a')));
@@ -441,6 +446,8 @@ mod tests {
             page: WorkflowPage::Edit(Box::new(edit_of(graph, cursor))),
             notice: None,
             error: None,
+            versions: None,
+            version_cursor: 0,
         };
         app.overlays.push(Overlay::Workflows(Box::new(sheet)));
         app.on_key(KeyEvent::from(KeyCode::Char('a')));

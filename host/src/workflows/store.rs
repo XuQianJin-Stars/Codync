@@ -94,18 +94,24 @@ pub fn save(store: &Store, id: &str, base: i64, graph: &Graph) -> Result<Saved> 
     })
 }
 
-pub fn save_script(store: &Store, id: &str, base: i64, script: Option<&str>, triggers: Option<Graph>) -> Result<Saved> {
+pub fn save_script(
+    store: &Store,
+    id: &str,
+    base: i64,
+    script: Option<&str>,
+    triggers: Option<&Graph>,
+) -> Result<Saved> {
     if script.is_none() && triggers.is_none() {
         bail!("This script couldn't be read");
     }
     let Some((summary, mut graph)) = load(store, id)? else { bail!("This workflow was deleted") };
     let stored = summary["script"].as_str().unwrap_or("").to_owned();
     let same_script = script.is_some_and(|next| next == stored);
-    let same_triggers = triggers.as_ref().is_none_or(|incoming| trigger_json(&graph) == trigger_json(incoming));
+    let same_triggers = triggers.is_none_or(|incoming| trigger_json(&graph) == trigger_json(incoming));
     if same_script && same_triggers {
         return Ok(Saved::Unchanged { revision: summary["revision"].as_i64().unwrap_or(base) });
     }
-    if let Some(incoming) = triggers.as_ref() {
+    if let Some(incoming) = triggers {
         let kept: Vec<_> = incoming.nodes.iter().filter(|n| n.kind == NodeKind::Trigger).cloned().collect();
         if !kept.is_empty() {
             graph.nodes.retain(|n| n.kind != NodeKind::Trigger);
@@ -323,15 +329,43 @@ pub fn versions(store: &Store, id: &str) -> Result<Vec<Value>> {
     })
 }
 
-pub fn version_graph(store: &Store, id: &str, version: &str) -> Result<Graph> {
-    let raw: String = store.with_immediate(|tx| {
+pub struct VersionSnapshot {
+    pub graph: Graph,
+    pub script: String,
+}
+
+pub fn version_snapshot(store: &Store, id: &str, version: &str) -> Result<VersionSnapshot> {
+    let (raw, script): (String, String) = store.with_immediate(|tx| {
         Ok(tx.query_row(
-            "SELECT graph_json FROM workflow_versions WHERE id = ?1 AND workflow_id = ?2",
+            "SELECT graph_json, COALESCE(script_text, '') FROM workflow_versions WHERE id = ?1 AND workflow_id = ?2",
             params![version, id],
-            |r| r.get(0),
+            |r| Ok((r.get(0)?, r.get(1)?)),
         )?)
     })?;
-    Ok(serde_json::from_str(&raw)?)
+    Ok(VersionSnapshot { graph: serde_json::from_str(&raw)?, script })
+}
+
+pub fn version_graph(store: &Store, id: &str, version: &str) -> Result<Graph> {
+    Ok(version_snapshot(store, id, version)?.graph)
+}
+
+/// Puts a saved graph and its script back. The caller records the current copy first.
+pub fn restore_saved(store: &Store, id: &str, base: i64, graph: &Graph, script: &str) -> Result<Saved> {
+    let Some((summary, _)) = load(store, id)? else { bail!("This workflow was deleted") };
+    let title = summary["title"].as_str().unwrap_or("Workflow");
+    let applied = if script.trim().is_empty() {
+        super::script::Applied {
+            source: "graph",
+            script: super::script::generate(title, graph),
+            graph: graph.clone(),
+            title: None,
+        }
+    } else {
+        super::script::prepare(script, graph, "", &|bot| bot_state(store, bot))?
+    };
+    graph::validate(&applied.graph, &|bot| bot_state(store, bot))?;
+    let now = now_ms();
+    store.with_immediate(|tx| write_script(tx, id, base, &applied, now))
 }
 
 fn read_graph(tx: &rusqlite::Transaction<'_>, id: &str, strokes: &str) -> Result<Graph> {

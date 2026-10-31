@@ -8,7 +8,7 @@ The implementation spec is [the design](../design/workflows.md). The same workfl
 
 ## What a run does
 
-One workflow has at most one open run. Starting another returns `A run is already in progress`. A graph with no trigger can be saved; starting it returns `Add a trigger first`.
+One workflow has at most one open run. Starting another returns `A run is already in progress`. A manual run of a graph that has steps and no trigger starts from the steps with no incoming line. A blank canvas, a script, or a schedule or webhook without a trigger returns `Add a trigger first`.
 
 A manual run is allowed while the workflow is paused. A schedule or webhook does not start a paused workflow. Pausing does not cancel the run that is already going, and it does not bump the graph revision.
 

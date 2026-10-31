@@ -50,6 +50,7 @@ impl App {
                     text: Editor::default(),
                     saving: false,
                     dirty: false,
+                    leaving: false,
                 };
                 page.load_text();
                 sheet.page = WorkflowPage::Edit(Box::new(page));
@@ -145,16 +146,26 @@ impl App {
             edit.saving = true;
             edit.dirty = false;
         }
-        self.overlays.insert(index, Overlay::Workflows(sheet));
         if let Some((wid, base, graph)) = follow
             && let Ok(graph) = serde_json::to_value(&graph)
         {
+            self.overlays.insert(index, Overlay::Workflows(sheet));
             self.sheet(
                 "saveWorkflowGraph",
                 json!({"id": wid, "baseRevision": base, "graph": graph}),
                 Reply::Workflow(WorkflowReply::Saved(wid)),
             );
+            return;
         }
+        if sheet.edit_ref().is_some_and(|edit| edit.leaving) {
+            let id = sheet.edit_ref().map(|edit| edit.id.clone()).unwrap_or_default();
+            sheet.versions = None;
+            sheet.page = WorkflowPage::Detail(Box::new(WorkflowDetail::pending(id.clone())));
+            self.overlays.insert(index, Overlay::Workflows(sheet));
+            self.fetch_workflow(&id, false);
+            return;
+        }
+        self.overlays.insert(index, Overlay::Workflows(sheet));
     }
 
     pub(super) fn workflow_started(&mut self, v: &Value) {
@@ -220,7 +231,7 @@ impl WorkflowSheet {
         self.edit_ref().is_some_and(|e| e.dirty || e.saving)
     }
 
-    pub(super) fn open_id(&self) -> Option<(String, Option<String>)> {
+    pub(in crate::tui) fn open_id(&self) -> Option<(String, Option<String>)> {
         match &self.page {
             WorkflowPage::Detail(d) => Some((d.id.clone(), None)),
             WorkflowPage::Edit(e) => Some((e.id.clone(), None)),
@@ -347,6 +358,7 @@ pub(super) fn edit_from_detail(sheet: &WorkflowSheet) -> Option<WorkflowEdit> {
         text: Editor::default(),
         saving: false,
         dirty: false,
+        leaving: false,
     };
     edit.load_text();
     Some(edit)

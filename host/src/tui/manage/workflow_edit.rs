@@ -142,17 +142,34 @@ impl App {
             return read_only(sheet, k);
         }
         let fields = matches!(mode, EditMode::Fields | EditMode::Script);
+        let typing = text_field
+            && matches!(
+                k.code,
+                KeyCode::Left
+                    | KeyCode::Right
+                    | KeyCode::Char(_)
+                    | KeyCode::Backspace
+                    | KeyCode::Delete
+                    | KeyCode::Home
+                    | KeyCode::End
+            );
         match k.code {
-            KeyCode::Esc | KeyCode::Char('q') => {
+            KeyCode::Esc => {
                 self.finish_edit(&mut sheet);
                 return Overlay::Workflows(Box::new(sheet));
             }
-            KeyCode::Char('j') | KeyCode::Down => self.step_cursor(&mut sheet, 1),
-            KeyCode::Char('k') | KeyCode::Up => self.step_cursor(&mut sheet, -1),
             KeyCode::Tab | KeyCode::BackTab => {
                 let delta: isize = if k.code == KeyCode::BackTab { -1 } else { 1 };
                 self.switch_field(&mut sheet, delta);
             }
+            _ if typing => {
+                if let WorkflowPage::Edit(edit) = &mut sheet.page {
+                    edit.text.key(k);
+                    edit.dirty = true;
+                }
+            }
+            KeyCode::Char('j') | KeyCode::Down => self.step_cursor(&mut sheet, 1),
+            KeyCode::Char('k') | KeyCode::Up => self.step_cursor(&mut sheet, -1),
             // Space steps through settings. A text field still takes a space; tab moves on.
             KeyCode::Char(' ') if !text_field => self.switch_field(&mut sheet, 1),
             KeyCode::Left | KeyCode::Right => {
@@ -163,11 +180,9 @@ impl App {
             KeyCode::Char(']') if !fields => self.shift_step(&mut sheet, 1),
             KeyCode::Char('a') if !fields => self.begin_add(&mut sheet),
             KeyCode::Char('x') if !fields => self.remove_step(&mut sheet),
-            _ if text_field => {
-                if let WorkflowPage::Edit(edit) = &mut sheet.page {
-                    edit.text.key(k);
-                    edit.dirty = true;
-                }
+            KeyCode::Char('q') if !text_field => {
+                self.finish_edit(&mut sheet);
+                return Overlay::Workflows(Box::new(sheet));
             }
             _ => {}
         }
@@ -246,7 +261,9 @@ impl App {
         if let WorkflowPage::Edit(edit) = &mut sheet.page
             && (edit.dirty || edit.saving)
         {
+            edit.leaving = true;
             self.persist_edit(edit);
+            return;
         }
         let id = match &sheet.page {
             WorkflowPage::Edit(edit) => edit.id.clone(),

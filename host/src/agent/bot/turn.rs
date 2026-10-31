@@ -342,9 +342,11 @@ impl Actor {
             self.routine_deadline = None;
             self.routine_timed_out = false;
             self.active_workflow = None;
-            self.hub.workflows.finish(&self.hub, &step, output, error, stopped_step);
-            let slot = crate::workflows::session_slot(&step);
-            self.set_session(Some(&slot), None);
+            let keep = self.hub.workflows.finish(&self.hub, &step, output, error, stopped_step);
+            if !keep {
+                let slot = crate::workflows::session_slot(&step);
+                self.set_session(Some(&slot), None);
+            }
         }
         if routine {
             let (status, detail) = if self.routine_timed_out {

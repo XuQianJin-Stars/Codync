@@ -445,6 +445,7 @@ fn finish_output(
     now: i64,
     effects: &mut Effects,
 ) -> Result<()> {
+    let shown = output_text(node, input);
     if OutputTarget::parse(field_str(&node.fields, "target")).is_chat() {
         let bot = field_str(&node.fields, "botId").unwrap_or("").trim();
         if !matches!(store::bot_state(&hub.store, bot), BotState::Ok) {
@@ -464,7 +465,7 @@ fn finish_output(
         }
         let step = new_id();
         let turn = hub.store.max_turn(bot) + 1;
-        let data = json!({"text": clip(input), "workflowId": run.workflow, "runId": run.id, "stepId": step, "notice": "workflow-output"});
+        let data = json!({"text": clip(&shown), "workflowId": run.workflow, "runId": run.id, "stepId": step, "notice": "workflow-output"});
         hub.add_entry_once(&format!("workflow-output-{step}"), &Lane::main(bot), EntryKind::Notice, turn, &data)?;
         write_step(
             &hub.store,
@@ -473,7 +474,7 @@ fn finish_output(
             &step,
             StepStatus::Done,
             input,
-            Some(input),
+            Some(&shown),
             None,
             truncated,
             None,
@@ -482,12 +483,12 @@ fn finish_output(
         )?;
         return Ok(());
     }
-    let step = write_open(hub, run, node, StepStatus::Done, input, truncated, passes, now)?;
+    let step = write_open(hub, run, node, StepStatus::Done, &shown, truncated, passes, now)?;
     if let Some(bot) = anchor(hub, run, Some(node)) {
         effects.pushes.push(Push {
             bot,
             title: run.title.clone(),
-            body: clip(input),
+            body: clip(&shown),
             kind: AlertKind::Done,
             workflow: run.workflow.clone(),
             run: Some(run.id.clone()),
@@ -495,6 +496,13 @@ fn finish_output(
         });
     }
     Ok(())
+}
+
+fn output_text(node: &Node, input: &str) -> String {
+    if !input.is_empty() {
+        return input.to_owned();
+    }
+    field_str(&node.fields, "text").unwrap_or("").to_owned()
 }
 
 fn approval_push(hub: &Hub, run: &RunRow, node: &Node, step: &str, input: &str) -> Option<Push> {
@@ -995,6 +1003,9 @@ pub fn run_solo(hub: &Hub, workflow: &str, node_id: &str, request: &str) -> Resu
         return step_value(hub, &existing);
     }
     let Some((summary, graph)) = store::load(&hub.store, workflow)? else { bail!("This workflow was deleted") };
+    if open_run(&hub.store, workflow)?.is_some() {
+        bail!("A run is already in progress");
+    }
     if summary["source"].as_str() == Some("script") {
         bail!("This workflow decides its steps when it runs");
     }
@@ -1147,13 +1158,14 @@ fn finish_solo_output(
     input: &str,
     now: i64,
 ) -> Result<()> {
+    let shown = output_text(node, input);
     if OutputTarget::parse(field_str(&node.fields, "target")).is_chat() {
         let bot = field_str(&node.fields, "botId").unwrap_or("").trim();
         if !matches!(store::bot_state(&hub.store, bot), BotState::Ok) {
             bail!("Choose a bot for this step");
         }
         let turn = hub.store.max_turn(bot) + 1;
-        let data = json!({"text": clip(input), "workflowId": workflow, "runId": Value::Null, "stepId": step, "notice": "workflow-output"});
+        let data = json!({"text": clip(&shown), "workflowId": workflow, "runId": Value::Null, "stepId": step, "notice": "workflow-output"});
         hub.add_entry_once(&format!("workflow-output-{step}"), &Lane::main(bot), EntryKind::Notice, turn, &data)?;
     } else if let Some(bot) = lead(&hub.store) {
         dispatch_pushes(
@@ -1163,7 +1175,7 @@ fn finish_solo_output(
                 pushes: vec![Push {
                     bot,
                     title: title.to_owned(),
-                    body: clip(input),
+                    body: clip(&shown),
                     kind: AlertKind::Done,
                     workflow: workflow.to_owned(),
                     run: None,
@@ -1185,7 +1197,7 @@ fn finish_solo_output(
             field_str(&node.fields, "botId"),
             StepStatus::Done,
             input,
-            input,
+            &shown,
             None,
             1,
             false,
@@ -1229,11 +1241,16 @@ pub fn retry_one(hub: &Hub, step_id: &str) -> Result<Value> {
     let Some(run_id) = row.run.clone() else {
         return run_solo(hub, &row.workflow, &row.node, &new_id());
     };
-    if let Some(open) = open_run(&hub.store, &row.workflow)? {
-        if open != run_id {
-            bail!("A run is already in progress");
-        }
+    if let Some(open) = open_run(&hub.store, &row.workflow)?
+        && open != run_id
+    {
         bail!("A run is already in progress");
+    }
+    if node_busy(&hub.store, &run_id, &row.node)? {
+        bail!("This step is still running");
+    }
+    if super::script_run::is_script_run(&hub.store, &run_id) {
+        return retry_script(hub, &row, &run_id, step_id);
     }
     let now = now_ms();
     hub.store.with_immediate(|tx| {
@@ -1266,6 +1283,41 @@ pub fn retry_one(hub: &Hub, step_id: &str) -> Result<Value> {
     let latest = hub.store.with_immediate(|tx| {
         tx.query_row(
             "SELECT id FROM workflow_steps WHERE run_id = ?1 AND node_id = ?2 ORDER BY attempt DESC, id DESC LIMIT 1",
+            params![run_id, row.node],
+            |r| r.get::<_, String>(0),
+        )
+        .map_err(anyhow::Error::from)
+    })?;
+    step_value(hub, &latest)
+}
+
+fn node_busy(store: &Store, run_id: &str, node: &str) -> Result<bool> {
+    store.with_immediate(|tx| {
+        let count: i64 = tx.query_row(
+            "SELECT COUNT(*) FROM workflow_steps WHERE run_id = ?1 AND node_id = ?2 AND status IN ('running','approval')",
+            params![run_id, node],
+            |r| r.get(0),
+        )?;
+        Ok(count > 0)
+    })
+}
+
+fn retry_script(hub: &Hub, row: &StepMeta, run_id: &str, step_id: &str) -> Result<Value> {
+    let now = now_ms();
+    hub.store.with_immediate(|tx| {
+        tx.execute(
+            "UPDATE workflow_runs SET status = 'running', error = NULL, ended_at = NULL, updated_at = ?2 WHERE id = ?1",
+            params![run_id, now],
+        )?;
+        // Keep the failed row, but stop the replay from treating it as this call.
+        tx.execute("UPDATE workflow_steps SET node_id = node_id || '#' || id WHERE id = ?1", [step_id])?;
+        Ok(())
+    })?;
+    super::script_run::replay(hub, run_id)?;
+    hub.emit_workflow(json!({"type": "workflow", "change": "run", "workflowId": row.workflow, "runId": run_id}));
+    let latest = hub.store.with_immediate(|tx| {
+        tx.query_row(
+            "SELECT id FROM workflow_steps WHERE run_id = ?1 AND node_id = ?2 ORDER BY created_at DESC, id DESC LIMIT 1",
             params![run_id, row.node],
             |r| r.get::<_, String>(0),
         )

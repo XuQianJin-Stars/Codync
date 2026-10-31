@@ -113,7 +113,7 @@ data class WorkflowSummary(
 )
 
 @Serializable
-data class WorkflowWebhook(val nodeId: String = "", val url: String = "", val secret: String? = null)
+data class WorkflowWebhook(val nodeId: String = "", val url: String? = null, val localUrl: String = "", val secret: String? = null)
 
 @Serializable
 data class WorkflowDetail(

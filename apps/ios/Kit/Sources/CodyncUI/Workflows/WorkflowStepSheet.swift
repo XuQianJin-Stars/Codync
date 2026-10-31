@@ -8,6 +8,7 @@ struct WorkflowStepSheet: View {
     var onChange: (WorkflowNode) -> Void
     var onReveal: () async -> [WorkflowWebhook]
     var onRotate: () async -> String?
+    var workflowId: String
 
     @Environment(BotStore.self) private var model
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -25,12 +26,13 @@ struct WorkflowStepSheet: View {
     @State private var rotating = false
 
     init(node: WorkflowNode, webhook: WorkflowWebhook?, onChange: @escaping (WorkflowNode) -> Void,
-         onReveal: @escaping () async -> [WorkflowWebhook], onRotate: @escaping () async -> String?) {
+         onReveal: @escaping () async -> [WorkflowWebhook], onRotate: @escaping () async -> String?, workflowId: String) {
         self.node = node
         self.webhook = webhook
         self.onChange = onChange
         self.onReveal = onReveal
         self.onRotate = onRotate
+        self.workflowId = workflowId
         _draft = State(initialValue: node)
     }
 
@@ -100,6 +102,7 @@ struct WorkflowStepSheet: View {
         default:
             EmptyView()
         }
+        WorkflowSoloRun(workflowId: workflowId, nodeId: draft.id, kind: draft.kind)
     }
 
     private var triggerKind: Binding<String> {
@@ -198,7 +201,7 @@ struct WorkflowStepSheet: View {
         let hook = revealed.first { $0.nodeId == draft.id } ?? webhook
         return VStack(alignment: .leading, spacing: 14) {
             if let hook {
-                Field("URL") { hookValue(hook.url, copy: "url") }
+                Field("URL") { hookValue(hook.url ?? hook.localUrl ?? "", copy: "url") }
                 Field("Key") {
                     hookValue(showKey ? (hook.secret ?? "") : String(repeating: "•", count: 16), copy: "key") {
                         IconButton(showKey ? "Hide key" : "Show key", systemImage: showKey ? "eye.slash" : "eye") {
@@ -229,7 +232,7 @@ struct WorkflowStepSheet: View {
             extra()
             IconButton(copied == copy ? "Copied" : "Copy", systemImage: copied == copy ? "checkmark" : "doc.on.doc") {
                 let hook = revealed.first { $0.nodeId == draft.id } ?? webhook
-                let value = copy == "key" ? hook?.secret : hook?.url
+                let value = copy == "key" ? hook?.secret : (hook?.url ?? hook?.localUrl)
                 Pasteboard.copy(value)
                 withAnimation(Motion.reduced(Motion.hover, reduceMotion)) { copied = copy }
             }

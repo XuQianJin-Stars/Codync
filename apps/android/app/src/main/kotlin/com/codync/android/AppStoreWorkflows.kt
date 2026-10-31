@@ -5,10 +5,12 @@ import androidx.lifecycle.viewModelScope
 import com.codync.android.core.*
 import java.util.UUID
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.buildJsonObject
@@ -169,12 +171,23 @@ internal suspend fun AppStore.fetchWorkflow(id: String, reveal: Boolean = false)
 }
 
 internal suspend fun AppStore.saveWorkflowGraph(id: String, baseRevision: Long, graph: Graph): WorkflowSaveResult = workflowSaves.withLock {
-    val response = ready().call("saveWorkflowGraph", buildJsonObject {
-        put("id", id)
-        put("baseRevision", baseRevision)
-        put("graph", WireJson.encodeToJsonElement(Graph.serializer(), graph))
-    })
-    WireJson.decodeFromJsonElement(response)
+    val result = withContext(NonCancellable) {
+        val response = ready().call("saveWorkflowGraph", buildJsonObject {
+            put("id", id)
+            put("baseRevision", baseRevision)
+            put("graph", WireJson.encodeToJsonElement(Graph.serializer(), graph))
+        })
+        WireJson.decodeFromJsonElement<WorkflowSaveResult>(response)
+    }
+    val held = heldWorkflow
+    if (held != null && held.id == id) {
+        if (result.conflict) releaseWorkflow(id)
+        else {
+            val next = result.workflow?.revision ?: result.revision
+            if (held.graph == graph) releaseWorkflow(id) else heldWorkflow = held.copy(revision = next)
+        }
+    }
+    result
 }
 
 /** Saves a held graph before a run. A conflict replaces nothing here; the editor resets from the result. */
@@ -183,9 +196,8 @@ internal suspend fun AppStore.flushHeldWorkflow(): WorkflowSaveResult? {
     if (held.id !in dirtyWorkflows) return null
     val result = saveWorkflowGraph(held.id, held.revision, held.graph)
     if (result.conflict) {
-        releaseWorkflow(held.id)
         mutableState.update { it.copy(workflowMessage = "This workflow was edited somewhere else", workflowTick = it.workflowTick + 1) }
-    } else releaseWorkflow(held.id)
+    }
     return result
 }
 

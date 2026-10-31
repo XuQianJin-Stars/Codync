@@ -183,7 +183,7 @@ import kotlinx.coroutines.launch
         } catch (cancelled: CancellationException) { throw cancelled }
         catch (failure: Exception) { error = failure.message }
     }
-    val url = webhook?.url
+    val url = webhook?.url?.takeIf { it.isNotBlank() } ?: webhook?.localUrl
     if (url.isNullOrBlank()) Text(tr("Runs each time something is posted to its URL. Save to get the URL and key."), style = Type.caption, color = Palette.secondary)
     else {
         fun copy(field: String, value: String, sensitive: Boolean) = scope.launch {

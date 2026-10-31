@@ -8,8 +8,8 @@ export const listWorkflows = (client: HostClient) => client.call<{ workflows: Wo
 export const fetchWorkflow = (client: HostClient, id: string, reveal = false) =>
   client.call<{ workflow: WorkflowDetail }>('workflow', { id, reveal })
 
-export const createWorkflow = (client: HostClient, title: string, graph?: Graph) =>
-  client.call<{ workflow: WorkflowDetail }>('createWorkflow', graph ? { title, graph } : { title })
+export const createWorkflow = (client: HostClient, title: string, graph?: Graph, script?: string) =>
+  client.call<{ workflow: WorkflowDetail }>('createWorkflow', { title, ...(graph ? { graph } : {}), ...(script ? { script } : {}) })
 
 export const renameWorkflow = (client: HostClient, id: string, title: string) =>
   client.call<{ workflow: WorkflowSummary }>('renameWorkflow', { id, title })

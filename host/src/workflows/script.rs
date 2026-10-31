@@ -7,12 +7,13 @@ mod parse;
 
 use super::graph::BotState;
 use super::limits::MAX_TITLE;
-use super::model::{Branch, Edge, Graph, Node, NodeKind, Point, PortType, field_str, new_id};
+use super::model::{Branch, Edge, Graph, Node, NodeKind, Point, PortType, field_str};
 use super::outline::outline_of;
 use anyhow::Result;
-use parse::{Checked, Kind};
+use parse::Kind;
 use serde_json::{Map, Value, json};
 use std::collections::{BTreeSet, HashMap};
+use std::fmt::Write as _;
 
 pub use parse::{Meta, phases_of};
 
@@ -21,7 +22,15 @@ pub struct Applied {
     pub script: String,
     pub graph: Graph,
     pub title: Option<String>,
-    pub phases: Vec<String>,
+}
+
+struct Draft<'a> {
+    graph: &'a Graph,
+    params: &'a mut BTreeSet<&'static str>,
+    vars: HashMap<String, String>,
+    lines: &'a mut Vec<String>,
+    seq: &'a mut u32,
+    last: Option<String>,
 }
 
 pub fn has_body(graph: &Graph) -> bool {
@@ -36,32 +45,22 @@ pub fn has_body(graph: &Graph) -> bool {
 /// A canvas save rewrites the script people and bots read. The walker still runs the graph.
 pub fn generate(title: &str, graph: &Graph) -> String {
     let mut params = BTreeSet::new();
-    let mut vars: HashMap<String, String> = HashMap::new();
     let mut lines = Vec::new();
     let mut seq = 0u32;
-    let mut last: Option<String> = None;
+    let mut draft =
+        Draft { graph, params: &mut params, vars: HashMap::new(), lines: &mut lines, seq: &mut seq, last: None };
     if let Some(outline) = outline_of(graph) {
-        emit_list(&outline.main, graph, &mut params, &mut vars, &mut lines, &mut seq, &mut last);
+        emit_list(&outline.main, &mut draft);
         if let Some(condition) = &outline.condition {
-            emit_condition(
-                condition,
-                &outline.yes,
-                &outline.no,
-                graph,
-                &mut params,
-                &mut vars,
-                &mut lines,
-                &mut seq,
-                &mut last,
-            );
+            emit_condition(condition, &outline.yes, &outline.no, &mut draft);
         }
-        emit_list(&outline.after, graph, &mut params, &mut vars, &mut lines, &mut seq, &mut last);
-        emit_list(&outline.loose, graph, &mut params, &mut vars, &mut lines, &mut seq, &mut last);
+        emit_list(&outline.after, &mut draft);
+        emit_list(&outline.loose, &mut draft);
     } else {
         let ids = super::outline::reading_order(graph);
-        emit_list(&ids, graph, &mut params, &mut vars, &mut lines, &mut seq, &mut last);
+        emit_list(&ids, &mut draft);
     }
-    let returned = last.unwrap_or_else(|| {
+    let returned = draft.last.unwrap_or_else(|| {
         params.insert("args");
         "args.input".into()
     });
@@ -104,7 +103,6 @@ pub fn prepare(
         script: script.to_owned(),
         graph,
         title,
-        phases: checked.meta.phases.clone(),
     })
 }
 
@@ -131,38 +129,20 @@ fn triggers_only(previous: &Graph) -> Graph {
     }
 }
 
-fn emit_list(
-    ids: &[String],
-    graph: &Graph,
-    params: &mut BTreeSet<&'static str>,
-    vars: &mut HashMap<String, String>,
-    lines: &mut Vec<String>,
-    seq: &mut u32,
-    last: &mut Option<String>,
-) {
+fn emit_list(ids: &[String], draft: &mut Draft<'_>) {
     for id in ids {
-        let Some(node) = graph.nodes.iter().find(|n| n.id == *id) else { continue };
+        let Some(node) = draft.graph.nodes.iter().find(|n| n.id == *id) else { continue };
         if node.kind == NodeKind::Trigger || node.kind == NodeKind::Condition || node.kind.is_annotation() {
             continue;
         }
-        emit_node(node, graph, params, vars, lines, seq, last);
+        emit_node(node, draft);
     }
 }
 
-fn emit_condition(
-    id: &str,
-    yes: &[String],
-    no: &[String],
-    graph: &Graph,
-    params: &mut BTreeSet<&'static str>,
-    vars: &mut HashMap<String, String>,
-    lines: &mut Vec<String>,
-    seq: &mut u32,
-    last: &mut Option<String>,
-) {
-    let Some(node) = graph.nodes.iter().find(|n| n.id == id) else { return };
-    let probe = last.clone().unwrap_or_else(|| {
-        params.insert("args");
+fn emit_condition(id: &str, yes: &[String], no: &[String], draft: &mut Draft<'_>) {
+    let Some(node) = draft.graph.nodes.iter().find(|n| n.id == id) else { return };
+    let probe = draft.last.clone().unwrap_or_else(|| {
+        draft.params.insert("args");
         "args.input".into()
     });
     let op = field_str(&node.fields, "op").unwrap_or("contains");
@@ -170,63 +150,70 @@ fn emit_condition(
     let test = match op {
         "equals" => format!("{probe} === {}", js_str(value)),
         "empty" => format!("{probe}.trim() === \"\""),
-        "regex" => {
-            format!("match({probe}, {})", js_str(value))
-        }
+        "regex" => format!("match({probe}, {})", js_str(value)),
         _ => format!("{probe}.includes({})", js_str(value)),
     };
-    lines.push(format!("// @node {id}"));
-    lines.push(format!("if ({test}) {{"));
-    emit_list(yes, graph, params, vars, lines, seq, last);
-    lines.push("} else {".into());
-    emit_list(no, graph, params, vars, lines, seq, last);
-    lines.push("}".into());
+    let result = fresh(draft.seq);
+    draft.lines.push(format!("// @node {id}"));
+    draft.lines.push(format!("let {result};"));
+    draft.lines.push(format!("if ({test}) {{"));
+    let saved_vars = draft.vars.clone();
+    let saved_last = draft.last.clone();
+    emit_list(yes, draft);
+    if let Some(value) = draft.last.clone() {
+        draft.lines.push(format!("{result} = {value};"));
+    }
+    draft.lines.push("} else {".into());
+    draft.vars = saved_vars;
+    draft.last = saved_last;
+    emit_list(no, draft);
+    if let Some(value) = draft.last.clone() {
+        draft.lines.push(format!("{result} = {value};"));
+    }
+    draft.lines.push("}".into());
+    draft.last = Some(result);
 }
 
-fn emit_node(
-    node: &Node,
-    graph: &Graph,
-    params: &mut BTreeSet<&'static str>,
-    vars: &mut HashMap<String, String>,
-    lines: &mut Vec<String>,
-    seq: &mut u32,
-    last: &mut Option<String>,
-) {
-    lines.push(format!("// @node {}", node.id));
+fn emit_node(node: &Node, draft: &mut Draft<'_>) {
+    draft.lines.push(format!("// @node {}", node.id));
     match node.kind {
         NodeKind::Prompt => {
-            let var = fresh(seq);
+            let var = fresh(draft.seq);
             let text = field_str(&node.fields, "text").unwrap_or("");
-            lines.push(format!("const {var} = {}", js_str(text)));
-            vars.insert(node.id.clone(), var.clone());
-            *last = Some(var);
+            draft.lines.push(format!("const {var} = {}", js_str(text)));
+            draft.vars.insert(node.id.clone(), var.clone());
+            draft.last = Some(var);
         }
         NodeKind::Agent => {
-            params.insert("agent");
-            let var = fresh(seq);
+            draft.params.insert("agent");
+            let var = fresh(draft.seq);
             let bot = field_str(&node.fields, "botId").unwrap_or("");
             let task = field_str(&node.fields, "task").unwrap_or("");
             let label = label_of(task);
-            let text = text_expr(node, graph, vars, params, task);
-            lines.push(format!("const {var} = await agent({}, {text}, {{ label: {} }})", js_str(bot), js_str(&label)));
-            vars.insert(node.id.clone(), var.clone());
-            *last = Some(var);
+            let text = text_expr(node, draft.graph, &draft.vars, draft.params, task);
+            draft.lines.push(format!(
+                "const {var} = await agent({}, {text}, {{ label: {} }})",
+                js_str(bot),
+                js_str(&label)
+            ));
+            draft.vars.insert(node.id.clone(), var.clone());
+            draft.last = Some(var);
         }
         NodeKind::Approval => {
-            params.insert("approval");
+            draft.params.insert("approval");
             let question = field_str(&node.fields, "question").unwrap_or("");
             let question = if question.is_empty() { "Approve this step?" } else { question };
-            lines.push(format!("await approval({})", js_str(question)));
+            draft.lines.push(format!("await approval({})", js_str(question)));
         }
         NodeKind::Output => {
-            params.insert("output");
+            draft.params.insert("output");
             let target = field_str(&node.fields, "target").unwrap_or("notify");
-            let text = text_expr(node, graph, vars, params, "");
+            let text = text_expr(node, draft.graph, &draft.vars, draft.params, "");
             if target == "chat" {
                 let bot = field_str(&node.fields, "botId").unwrap_or("");
-                lines.push(format!("await output({{ target: \"chat\", botId: {}, text: {text} }})", js_str(bot)));
+                draft.lines.push(format!("await output({{ target: \"chat\", botId: {}, text: {text} }})", js_str(bot)));
             } else {
-                lines.push(format!("await output({{ target: \"notify\", text: {text} }})"));
+                draft.lines.push(format!("await output({{ target: \"notify\", text: {text} }})"));
             }
         }
         _ => {}
@@ -313,7 +300,9 @@ fn js_str(text: &str) -> String {
             '\n' => out.push_str("\\n"),
             '\r' => out.push_str("\\r"),
             '\t' => out.push_str("\\t"),
-            ch if ch.is_control() => out.push_str(&format!("\\u{:04x}", u32::from(ch))),
+            ch if ch.is_control() => {
+                let _ = write!(out, "\\u{:04x}", u32::from(ch));
+            }
             ch => out.push(ch),
         }
     }

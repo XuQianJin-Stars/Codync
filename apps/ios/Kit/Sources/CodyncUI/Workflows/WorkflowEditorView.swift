@@ -67,7 +67,8 @@ struct WorkflowEditorView: View {
                     webhook: webhooks.first { $0.nodeId == route.id },
                     onChange: { replace($0) },
                     onReveal: { await revealWebhook() },
-                    onRotate: { await rotateWebhook(route.id) }
+                    onRotate: { await rotateWebhook(route.id) },
+                    workflowId: workflowId
                 )
             }
         }

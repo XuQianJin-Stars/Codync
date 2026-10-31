@@ -309,7 +309,10 @@ export class BotMirror extends Observable {
 
   /** A host without the workflow methods hides the entry and keeps the sentence off the generic dialog. */
   reportWorkflowFailure(error: unknown) {
-    if (!(error instanceof HostError) || error.message !== 'unknown method') return false
+    if (!(error instanceof HostError) || error.message !== 'unknown method') {
+      console.error('workflow', error)
+      return false
+    }
     this.workflowMethodMissing = true
     this.quietError = true
     this.lastError = error.message

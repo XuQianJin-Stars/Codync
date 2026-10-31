@@ -386,8 +386,10 @@ export class BotSync extends BotMirror {
     try {
       const { run } = await fetchWorkflowRun(client, runId)
       const session = this.workflowSession
-      if (this.retired || !session?.followLive || session.runId !== runId) return
+      if (this.retired || !session?.followLive) return
+      if (session.runId && session.runId !== runId) return
       this.workflowRun = run
+      if (session.runId !== runId) this.workflowSession = { ...session, runId }
       this.changed()
     } catch (error) {
       this.reportWorkflowFailure(error)

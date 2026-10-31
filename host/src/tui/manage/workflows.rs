@@ -36,13 +36,17 @@ pub struct WorkflowEdit {
     pub base: i64,
     pub graph: Graph,
     pub source: String,
+    #[allow(dead_code)]
     pub script: String,
+    #[allow(dead_code)]
     pub phases: Vec<String>,
     pub cursor: usize,
     pub field: usize,
     pub text: Editor,
     pub saving: bool,
     pub dirty: bool,
+    /// The editor stays up until its last save lands, then the sheet returns to the detail page.
+    pub leaving: bool,
 }
 
 pub struct WorkflowAdd {
@@ -70,6 +74,8 @@ pub struct WorkflowSheet {
     pub page: WorkflowPage,
     pub notice: Option<String>,
     pub error: Option<String>,
+    pub versions: Option<Vec<Value>>,
+    pub version_cursor: usize,
 }
 
 impl WorkflowSheet {
@@ -107,6 +113,8 @@ impl App {
             page: WorkflowPage::List,
             notice: None,
             error: None,
+            versions: None,
+            version_cursor: 0,
         })));
     }
 
@@ -147,6 +155,9 @@ impl App {
     }
 
     pub(in crate::tui) fn workflows_key(&mut self, sheet: WorkflowSheet, k: KeyEvent) -> Option<Overlay> {
+        if sheet.versions.is_some() {
+            return self.workflow_versions_key(sheet, k);
+        }
         match sheet.page {
             WorkflowPage::List => self.workflow_list_key(sheet, k),
             WorkflowPage::Detail(_) => self.workflow_detail_key(sheet, k),
@@ -166,7 +177,51 @@ impl App {
             WorkflowReply::Started => self.workflow_started(v),
             WorkflowReply::Run(id) => self.workflow_run_loaded(&id, v),
             WorkflowReply::Deleted => self.workflow_deleted(""),
+            WorkflowReply::Versions(id) => self.workflow_versions_loaded(&id, v),
         }
+    }
+
+    fn workflow_versions_loaded(&mut self, id: &str, v: &Value) {
+        let items = v["versions"].as_array().cloned().unwrap_or_default();
+        for overlay in &mut self.overlays {
+            if let Overlay::Workflows(sheet) = overlay
+                && sheet.open_id().is_some_and(|(open, _)| open == id)
+            {
+                sheet.versions = Some(items);
+                sheet.version_cursor = 0;
+                return;
+            }
+        }
+    }
+
+    fn workflow_versions_key(&mut self, mut sheet: WorkflowSheet, k: KeyEvent) -> Option<Overlay> {
+        let n = sheet.versions.as_ref().map_or(0, Vec::len);
+        match k.code {
+            KeyCode::Esc | KeyCode::Char('q') => sheet.versions = None,
+            KeyCode::Char('j') | KeyCode::Down => {
+                sheet.version_cursor = (sheet.version_cursor + 1).min(n.saturating_sub(1));
+            }
+            KeyCode::Char('k') | KeyCode::Up => sheet.version_cursor = sheet.version_cursor.saturating_sub(1),
+            KeyCode::Enter => {
+                let picked = sheet
+                    .versions
+                    .as_ref()
+                    .and_then(|items| items.get(sheet.version_cursor))
+                    .and_then(|item| item["id"].as_str().map(str::to_owned));
+                let workflow = sheet.open_id().map(|(id, _)| id);
+                if let (Some(version_id), Some(id)) = (picked, workflow) {
+                    self.overlays.push(Overlay::Workflows(Box::new(sheet)));
+                    self.sheet(
+                        "restoreWorkflowVersion",
+                        json!({"id": id, "versionId": version_id}),
+                        Reply::Workflow(WorkflowReply::Refresh(id)),
+                    );
+                    return None;
+                }
+            }
+            _ => {}
+        }
+        Some(Overlay::Workflows(Box::new(sheet)))
     }
 
     pub(in crate::tui) fn workflow_failed(&mut self, reply: &WorkflowReply, error: &str) {
@@ -265,6 +320,10 @@ impl App {
                     Reply::Workflow(WorkflowReply::Refresh(id)),
                 );
             }
+            KeyCode::Char('v') => {
+                let id = snapshot.id.clone();
+                self.sheet("workflowVersions", json!({"id": id}), Reply::Workflow(WorkflowReply::Versions(id)));
+            }
             KeyCode::Char('d') => {
                 self.overlays.push(Overlay::Workflows(Box::new(sheet)));
                 self.overlays.push(Overlay::Confirm(delete_confirm(&snapshot.id, &snapshot.title)));
@@ -362,7 +421,7 @@ impl App {
         );
     }
 
-    fn fetch_workflow(&mut self, id: &str, edit: bool) {
+    pub(in crate::tui) fn fetch_workflow(&mut self, id: &str, edit: bool) {
         self.sheet(
             "workflow",
             json!({"id": id, "reveal": false}),

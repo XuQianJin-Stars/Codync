@@ -26,7 +26,9 @@ import com.codync.android.core.WorkflowNode
 import com.codync.android.design.*
 import java.util.UUID
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonObject
@@ -66,6 +68,7 @@ import kotlinx.serialization.json.put
         catch (failure: Exception) { error = failure.message }
     }
     LaunchedEffect(id) {
+        try {
         for (kick in kicks) {
             delay(400)
             val saving = graph ?: continue
@@ -100,6 +103,9 @@ import kotlinx.serialization.json.put
                 }
             } catch (cancelled: CancellationException) { throw cancelled }
             catch (failure: Exception) { error = failure.message ?: "Couldn't save this workflow." }
+        }
+        } finally {
+            withContext(NonCancellable) { runCatching { store.flushHeldWorkflow() } }
         }
     }
     val current = graph

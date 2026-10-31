@@ -12,6 +12,10 @@ use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 
 pub(in crate::tui::view) fn workflows(buf: &mut Buffer, area: Rect, app: &App, sheet: &WorkflowSheet) {
+    if sheet.versions.is_some() {
+        versions(buf, area, sheet);
+        return;
+    }
     match &sheet.page {
         WorkflowPage::List => list(buf, area, sheet),
         WorkflowPage::Detail(detail) => detail_page(buf, area, app, sheet, detail),
@@ -19,6 +23,35 @@ pub(in crate::tui::view) fn workflows(buf: &mut Buffer, area: Rect, app: &App, s
         WorkflowPage::Add(add) => add_page(buf, area, app, sheet, &add.edit, add.cursor),
         WorkflowPage::Run(run) => run_page(buf, area, sheet, run),
     }
+}
+
+fn versions(buf: &mut Buffer, area: Rect, sheet: &WorkflowSheet) {
+    let t = theme();
+    let inner = frame(buf, area, &tr("Versions"));
+    let Some(items) = &sheet.versions else { return };
+    if items.is_empty() {
+        put(buf, inner.x, inner.y, inner.width, &tr("No versions yet"), t.secondary.patch(t.panel));
+        return;
+    }
+    let rows = usize::from(inner.height.saturating_sub(2));
+    let start = sheet.version_cursor.saturating_sub(rows.saturating_sub(1));
+    for (y, (i, item)) in (inner.y..).zip(items.iter().enumerate().skip(start).take(rows)) {
+        let base = hilite(buf, inner, y, i == sheet.version_cursor);
+        let kind = match item["kind"].as_str().unwrap_or("") {
+            "run" => tr("Before the run"),
+            "restore" => tr("Before restoring"),
+            _ => tr("Autosaved"),
+        };
+        put(buf, inner.x, y, inner.width, &kind, base);
+    }
+    put(
+        buf,
+        inner.x,
+        inner.y + inner.height.saturating_sub(1),
+        inner.width,
+        &tr("enter restores"),
+        t.dim.patch(t.panel),
+    );
 }
 
 fn list(buf: &mut Buffer, area: Rect, sheet: &WorkflowSheet) {

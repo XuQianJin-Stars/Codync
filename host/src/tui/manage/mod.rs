@@ -115,6 +115,7 @@ pub enum WorkflowReply {
     Started,
     Run(String),
     Deleted,
+    Versions(String),
 }
 
 /// A read-only conversation between `bot` and `peer`, scrolled from the bottom.

@@ -66,7 +66,8 @@ export interface WorkflowSummary {
 
 export interface WorkflowWebhook {
   nodeId: string
-  url: string
+  url: string | null
+  localUrl?: string
   secret?: string
 }
 

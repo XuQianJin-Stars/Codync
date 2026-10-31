@@ -23,7 +23,7 @@ struct Call {
     status: String,
     output: Option<String>,
     error: Option<String>,
-    id: String,
+    schema: Option<String>,
 }
 
 struct Note {
@@ -74,8 +74,16 @@ pub fn replay(hub: &Hub, run_id: &str) -> Result<()> {
     let calls = load_calls(&hub.store, run_id)?;
     let script = rewrite(&row.script);
     let payload = row.payload.clone();
-    let driven = interpret(script, payload, calls);
-    let host = driven?;
+    let host = match interpret(script, payload, calls) {
+        Ok(host) => host,
+        Err(error) => {
+            finish(hub, &row, "failed", Some(error.to_string()), None)?;
+            hub.emit_workflow(
+                json!({"type": "workflow", "change": "run", "workflowId": row.workflow, "runId": run_id}),
+            );
+            return Ok(());
+        }
+    };
     apply(hub, &row, host)
 }
 
@@ -109,7 +117,7 @@ fn load_run(store: &crate::store::Store, id: &str) -> Result<Option<RunInfo>> {
 fn load_calls(store: &crate::store::Store, run_id: &str) -> Result<HashMap<i64, Call>> {
     store.with_immediate(|tx| {
         let mut st = tx.prepare(
-            "SELECT node_id, status, output, error, id, attempt FROM workflow_steps WHERE run_id = ?1 ORDER BY attempt",
+            "SELECT node_id, status, output, error, schema_json, attempt FROM workflow_steps WHERE run_id = ?1 ORDER BY attempt",
         )?;
         let rows = st.query_map([run_id], |r| {
             Ok((
@@ -117,15 +125,15 @@ fn load_calls(store: &crate::store::Store, run_id: &str) -> Result<HashMap<i64, 
                 r.get::<_, String>(1)?,
                 r.get::<_, Option<String>>(2)?,
                 r.get::<_, Option<String>>(3)?,
-                r.get::<_, String>(4)?,
+                r.get::<_, Option<String>>(4)?,
                 r.get::<_, i64>(5)?,
             ))
         })?;
         let mut calls = HashMap::new();
         for row in rows {
-            let (node, status, output, error, id, _) = row?;
+            let (node, status, output, error, schema, _) = row?;
             let Some(index) = node.strip_prefix("call-").and_then(|n| n.parse().ok()) else { continue };
-            calls.insert(index, Call { status, output, error, id });
+            calls.insert(index, Call { status, output, error, schema });
         }
         Ok(calls)
     })
@@ -147,26 +155,25 @@ fn interpret(script: String, payload: String, calls: HashMap<i64, Call>) -> Resu
             .register_global_property(js_string!("args"), args, Attribute::all())
             .map_err(|e| anyhow::anyhow!("{e}"))?;
         let value = context.eval(Source::from_bytes(script.as_bytes())).map_err(|e| message_of(&e))?;
-        let _ = context.run_jobs();
-        if let Some(object) = value.as_object() {
-            if let Ok(promise) = JsPromise::from_object(object.clone()) {
-                match promise.state() {
-                    boa_engine::builtins::promise::PromiseState::Rejected(error) => {
-                        note_fatal(&error.to_string(&mut context).map(|s| s.to_std_string_lossy()).unwrap_or_default());
-                    }
-                    boa_engine::builtins::promise::PromiseState::Fulfilled(value) => {
-                        let text = returned(&value, &mut context);
-                        HOST.with(|host| host.borrow_mut().output = Some(text));
-                    }
-                    boa_engine::builtins::promise::PromiseState::Pending => {}
+        let () = context.run_jobs();
+        if let Some(object) = value.as_object()
+            && let Ok(promise) = JsPromise::from_object(object.clone())
+        {
+            match promise.state() {
+                boa_engine::builtins::promise::PromiseState::Rejected(error) => {
+                    note_fatal(&error.to_string(&mut context).map(|s| s.to_std_string_lossy()).unwrap_or_default());
                 }
+                boa_engine::builtins::promise::PromiseState::Fulfilled(value) => {
+                    let text = returned(&value, &mut context);
+                    HOST.with(|host| host.borrow_mut().output = Some(text));
+                }
+                boa_engine::builtins::promise::PromiseState::Pending => {}
             }
         }
         Ok::<_, anyhow::Error>(HOST.with(|host| host.borrow().snapshot()))
     };
     if tokio::runtime::Handle::try_current()
-        .ok()
-        .is_some_and(|h| h.runtime_flavor() == tokio::runtime::RuntimeFlavor::MultiThread)
+        .is_ok_and(|h| h.runtime_flavor() == tokio::runtime::RuntimeFlavor::MultiThread)
     {
         tokio::task::block_in_place(run)
     } else {
@@ -250,13 +257,37 @@ fn js_agent(_this: &JsValue, args: &[JsValue], context: &mut Context) -> JsResul
     let label = object_string(args.get(2), "label", context);
     let schema = object_json(args.get(2), "schema", context);
     let phase = HOST.with(|host| host.borrow().phase.clone().unwrap_or_default());
-    host_call(context, "agent", bot, prompt, label, phase, schema, String::new(), String::new())
+    host_call(
+        context,
+        HostRequest {
+            kind: "agent".into(),
+            bot,
+            prompt,
+            label,
+            phase,
+            schema,
+            target: String::new(),
+            text: String::new(),
+        },
+    )
 }
 
 fn js_approval(_this: &JsValue, args: &[JsValue], context: &mut Context) -> JsResult<JsValue> {
     let question = arg_string(args, 0);
     let phase = HOST.with(|host| host.borrow().phase.clone().unwrap_or_default());
-    host_call(context, "approval", String::new(), question, String::new(), phase, None, String::new(), String::new())
+    host_call(
+        context,
+        HostRequest {
+            kind: "approval".into(),
+            bot: String::new(),
+            prompt: question,
+            label: String::new(),
+            phase,
+            schema: None,
+            target: String::new(),
+            text: String::new(),
+        },
+    )
 }
 
 fn js_output(_this: &JsValue, args: &[JsValue], context: &mut Context) -> JsResult<JsValue> {
@@ -264,9 +295,22 @@ fn js_output(_this: &JsValue, args: &[JsValue], context: &mut Context) -> JsResu
     let text = object_string(args.first(), "text", context);
     let bot = object_string(args.first(), "botId", context);
     let phase = HOST.with(|host| host.borrow().phase.clone().unwrap_or_default());
-    host_call(context, "output", bot, String::new(), String::new(), phase, None, target, text)
+    host_call(
+        context,
+        HostRequest {
+            kind: "output".into(),
+            bot,
+            prompt: String::new(),
+            label: String::new(),
+            phase,
+            schema: None,
+            target,
+            text,
+        },
+    )
 }
 
+#[allow(clippy::unnecessary_wraps)]
 fn js_phase(_this: &JsValue, args: &[JsValue], _context: &mut Context) -> JsResult<JsValue> {
     let title = clip(&arg_string(args, 0), 80);
     HOST.with(|host| {
@@ -277,12 +321,14 @@ fn js_phase(_this: &JsValue, args: &[JsValue], _context: &mut Context) -> JsResu
     Ok(JsValue::undefined())
 }
 
+#[allow(clippy::unnecessary_wraps)]
 fn js_log(_this: &JsValue, args: &[JsValue], _context: &mut Context) -> JsResult<JsValue> {
     let text = clip(&arg_string(args, 0), MAX_TEXT);
     HOST.with(|host| host.borrow_mut().notes.push(Note { kind: "log".into(), text }));
     Ok(JsValue::undefined())
 }
 
+#[allow(clippy::unnecessary_wraps)]
 fn js_match(_this: &JsValue, args: &[JsValue], _context: &mut Context) -> JsResult<JsValue> {
     let text = arg_string(args, 0);
     let pattern = arg_string(args, 1);
@@ -295,7 +341,7 @@ fn js_parallel(_this: &JsValue, args: &[JsValue], context: &mut Context) -> JsRe
         note_fatal("This parallel didn't get a list of steps");
         return Err(JsNativeError::typ().with_message("This parallel didn't get a list of steps").into());
     };
-    let length = object.get(js_string!("length"), context)?.as_number().unwrap_or(0.0) as usize;
+    let length = js_len(object.get(js_string!("length"), context)?.as_number().unwrap_or(0.0));
     if length > MAX_PARALLEL {
         note_fatal("Too many steps at once");
         return Err(JsNativeError::typ().with_message("Too many steps at once").into());
@@ -310,8 +356,12 @@ fn js_parallel(_this: &JsValue, args: &[JsValue], context: &mut Context) -> JsRe
             note_fatal("This parallel didn't get a list of steps");
             break;
         };
-        values.push(func.call(&JsValue::undefined(), &[], context)?);
-        let _ = context.run_jobs();
+        let called = func.call(&JsValue::undefined(), &[], context)?;
+        let () = context.run_jobs();
+        let Some(value) = await_settled(called, context) else {
+            return Ok(pending_promise(context));
+        };
+        values.push(value);
     }
     Ok(boa_engine::object::builtins::JsArray::from_iter(values, context).into())
 }
@@ -326,7 +376,7 @@ fn js_pipeline(_this: &JsValue, args: &[JsValue], context: &mut Context) -> JsRe
         note_fatal("Too many stages");
         return Err(JsNativeError::typ().with_message("Too many stages").into());
     }
-    let count = items.get(js_string!("length"), context)?.as_number().unwrap_or(0.0) as usize;
+    let count = js_len(items.get(js_string!("length"), context)?.as_number().unwrap_or(0.0));
     if count > MAX_PARALLEL {
         note_fatal("Too many steps at once");
         return Err(JsNativeError::typ().with_message("Too many steps at once").into());
@@ -345,17 +395,20 @@ fn js_pipeline(_this: &JsValue, args: &[JsValue], context: &mut Context) -> JsRe
             if HOST.with(|host| host.borrow().fatal.is_some()) {
                 break;
             }
-            next.push(func.call(&JsValue::undefined(), &[value.clone(), JsValue::from(index)], context)?);
-            let _ = context.run_jobs();
+            let called = func.call(&JsValue::undefined(), &[value.clone(), JsValue::from(index)], context)?;
+            let () = context.run_jobs();
+            let Some(settled) = await_settled(called, context) else {
+                return Ok(pending_promise(context));
+            };
+            next.push(settled);
         }
         current = next;
     }
     Ok(boa_engine::object::builtins::JsArray::from_iter(current, context).into())
 }
 
-fn host_call(
-    context: &mut Context,
-    kind: &str,
+struct HostRequest {
+    kind: String,
     bot: String,
     prompt: String,
     label: String,
@@ -363,7 +416,9 @@ fn host_call(
     schema: Option<String>,
     target: String,
     text: String,
-) -> JsResult<JsValue> {
+}
+
+fn host_call(context: &mut Context, request: HostRequest) -> JsResult<JsValue> {
     let (promise, resolvers) = JsPromise::new_pending(context);
     let index = HOST.with(|host| {
         let mut host = host.borrow_mut();
@@ -377,25 +432,25 @@ fn host_call(
         }
         let index = host.index;
         if let Some(call) = host.calls.get(&index) {
-            return Ok((index, Some((call.status.clone(), call.output.clone(), call.error.clone()))));
+            return Ok((
+                index,
+                Some((call.status.clone(), call.output.clone(), call.error.clone(), call.schema.clone())),
+            ));
         }
         Ok((index, None))
     });
-    let (index, cached) = match index {
-        Ok(value) => value,
-        Err(_) => {
-            resolvers.reject.call(
-                &JsValue::undefined(),
-                &[js_string!("This workflow's script didn't finish").into()],
-                context,
-            )?;
-            return Ok(promise.into());
-        }
+    let Ok((index, cached)) = index else {
+        resolvers.reject.call(
+            &JsValue::undefined(),
+            &[js_string!("This workflow's script didn't finish").into()],
+            context,
+        )?;
+        return Ok(promise.into());
     };
-    if let Some((status, output, error)) = cached {
+    if let Some((status, output, error, schema)) = cached {
         if status == "done" {
-            let value = js_string!(output.unwrap_or_default());
-            resolvers.resolve.call(&JsValue::undefined(), &[value.into()], context)?;
+            let value = typed_value(context, &output.unwrap_or_default(), schema.as_deref());
+            resolvers.resolve.call(&JsValue::undefined(), &[value], context)?;
         } else if status == "failed" || status == "stopped" {
             let message = error.unwrap_or_else(|| "This workflow's script didn't finish".into());
             note_fatal(&message);
@@ -404,20 +459,22 @@ fn host_call(
         return Ok(promise.into());
     }
     let mut fail = None;
-    if kind == "agent" && prompt.trim().is_empty() {
+    if request.kind == "agent" && request.prompt.trim().is_empty() {
         fail = Some("The step didn't include a prompt".into());
         note_fatal("The step didn't include a prompt");
     }
+    let text = request.text.clone();
+    let kind = request.kind.clone();
     HOST.with(|host| {
         host.borrow_mut().fresh.push(Fresh {
             index,
-            kind: kind.into(),
-            bot,
-            prompt,
-            label,
-            phase,
-            schema,
-            target,
+            kind: request.kind,
+            bot: request.bot,
+            prompt: request.prompt,
+            label: request.label,
+            phase: request.phase,
+            schema: request.schema,
+            target: request.target,
             text: text.clone(),
             fail,
         });
@@ -426,6 +483,45 @@ fn host_call(
         resolvers.resolve.call(&JsValue::undefined(), &[js_string!(text).into()], context)?;
     }
     Ok(promise.into())
+}
+
+fn typed_value(context: &mut Context, output: &str, schema: Option<&str>) -> JsValue {
+    if schema.is_some()
+        && let Ok(parsed) = serde_json::from_str::<Value>(output)
+        && let Ok(value) = JsValue::from_json(&parsed, context)
+    {
+        return value;
+    }
+    js_string!(output).into()
+}
+
+fn await_settled(value: JsValue, context: &mut Context) -> Option<JsValue> {
+    let Some(object) = value.as_object() else { return Some(value) };
+    let Ok(promise) = JsPromise::from_object(object.clone()) else { return Some(value) };
+    match promise.state() {
+        boa_engine::builtins::promise::PromiseState::Fulfilled(value) => Some(value),
+        boa_engine::builtins::promise::PromiseState::Rejected(error) => {
+            let message = error.to_string(context).map(|text| text.to_std_string_lossy()).unwrap_or_default();
+            note_fatal(&message);
+            None
+        }
+        boa_engine::builtins::promise::PromiseState::Pending => None,
+    }
+}
+
+fn pending_promise(context: &mut Context) -> JsValue {
+    JsPromise::new_pending(context).0.into()
+}
+
+#[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss, clippy::cast_precision_loss)]
+fn js_len(value: f64) -> usize {
+    if !value.is_finite() || value <= 0.0 {
+        return 0;
+    }
+    if value >= f64::from(u32::MAX) {
+        return u32::MAX as usize;
+    }
+    value as usize
 }
 
 fn apply(hub: &Hub, run: &RunInfo, host: Host) -> Result<()> {
@@ -460,18 +556,18 @@ fn apply(hub: &Hub, run: &RunInfo, host: Host) -> Result<()> {
         if fresh.kind == "agent" && status == "running" {
             effects.agents.push((fresh.bot.clone(), step.clone()));
         }
-        if fresh.kind == "approval" {
-            if let Some(bot) = anchor(hub, &run.workflow) {
-                effects.pushes.push(Push {
-                    bot,
-                    title: run.title.clone(),
-                    body: clip(&fresh.prompt, 180),
-                    kind: AlertKind::NeedsInput,
-                    workflow: run.workflow.clone(),
-                    run: Some(run.id.clone()),
-                    step: step.clone(),
-                });
-            }
+        if fresh.kind == "approval"
+            && let Some(bot) = anchor(hub, &run.workflow)
+        {
+            effects.pushes.push(Push {
+                bot,
+                title: run.title.clone(),
+                body: clip(&fresh.prompt, 180),
+                kind: AlertKind::NeedsInput,
+                workflow: run.workflow.clone(),
+                run: Some(run.id.clone()),
+                step: step.clone(),
+            });
         }
         if fresh.kind == "output" && status == "done" {
             deliver_output(hub, run, &step, &fresh.bot, &fresh.target, &prompt, &mut effects)?;
@@ -527,7 +623,7 @@ fn deliver_output(
         return Ok(());
     }
     if let Some(anchor) =
-        anchor(hub, &run.workflow).or_else(|| bot.trim().is_empty().then(|| String::new()).filter(|id| !id.is_empty()))
+        anchor(hub, &run.workflow).or_else(|| bot.trim().is_empty().then(String::new).filter(|id| !id.is_empty()))
     {
         let _ = anchor;
     }
@@ -570,7 +666,7 @@ fn replace_notes(hub: &Hub, run_id: &str, notes: &[Note], now: i64) -> Result<()
         for (position, note) in notes.iter().enumerate() {
             tx.execute(
                 "INSERT INTO workflow_run_notes(run_id, position, kind, text, at) VALUES(?1,?2,?3,?4,?5)",
-                params![run_id, position as i64, note.kind, note.text, now],
+                params![run_id, i64::try_from(position).unwrap_or(i64::MAX), note.kind, note.text, now],
             )?;
         }
         Ok(())
@@ -614,32 +710,38 @@ fn rewrite(src: &str) -> String {
 }
 
 fn strip_export(src: &str, from: &str, to: &str) -> String {
-    let bytes = src.as_bytes();
     let mut i = 0;
-    while i < bytes.len() {
-        if bytes[i] == b'"' || bytes[i] == b'\'' || bytes[i] == b'`' {
-            let quote = bytes[i];
-            i += 1;
-            while i < bytes.len() && bytes[i] != quote {
-                if bytes[i] == b'\\' {
-                    i += 2;
-                } else {
-                    i += 1;
-                }
+    let mut quote: Option<char> = None;
+    let mut escaped = false;
+    while i < src.len() {
+        let Some(ch) = src[i..].chars().next() else { break };
+        let width = ch.len_utf8();
+        if let Some(open) = quote {
+            if escaped {
+                escaped = false;
+            } else if ch == '\\' {
+                escaped = true;
+            } else if ch == open {
+                quote = None;
             }
-            i += 1;
+            i += width;
+            continue;
+        }
+        if ch == '"' || ch == '\'' || ch == '`' {
+            quote = Some(ch);
+            i += width;
             continue;
         }
         if src[i..].starts_with(from) {
             return format!("{}{}{}", &src[..i], to, &src[i + from.len()..]);
         }
-        i += 1;
+        i += width;
     }
     src.to_owned()
 }
 
 fn arg_string(args: &[JsValue], index: usize) -> String {
-    args.get(index).and_then(JsValue::as_string).map(|s| s.to_std_string_lossy()).unwrap_or_default()
+    args.get(index).and_then(JsValue::as_string).map(boa_engine::JsString::to_std_string_lossy).unwrap_or_default()
 }
 
 fn object_string(value: Option<&JsValue>, key: &str, context: &mut Context) -> String {
@@ -647,7 +749,7 @@ fn object_string(value: Option<&JsValue>, key: &str, context: &mut Context) -> S
     object
         .get(js_string!(key), context)
         .ok()
-        .and_then(|v| v.as_string().map(|s| s.to_std_string_lossy()))
+        .and_then(|v| v.as_string().map(boa_engine::JsString::to_std_string_lossy))
         .unwrap_or_default()
 }
 
@@ -703,6 +805,17 @@ fn matches_schema(schema: &Value, value: &Value) -> bool {
             return false;
         }
     }
+    if let Some(choices) = obj.get("enum").and_then(Value::as_array)
+        && !choices.iter().any(|choice| choice == value)
+    {
+        return false;
+    }
+    if let Some(items) = obj.get("items") {
+        let Some(array) = value.as_array() else { return false };
+        if array.iter().any(|item| !matches_schema(items, item)) {
+            return false;
+        }
+    }
     if let Some(required) = obj.get("required").and_then(Value::as_array) {
         let Some(object) = value.as_object() else { return false };
         if required.iter().any(|key| key.as_str().is_some_and(|key| !object.contains_key(key))) {
@@ -711,33 +824,37 @@ fn matches_schema(schema: &Value, value: &Value) -> bool {
     }
     if let Some(props) = obj.get("properties").and_then(Value::as_object) {
         let Some(object) = value.as_object() else { return false };
+        if object.keys().any(|key| !props.contains_key(key)) {
+            return false;
+        }
         for (key, prop) in props {
-            if let Some(item) = object.get(key) {
-                if !matches_schema(prop, item) {
-                    return false;
-                }
+            if let Some(item) = object.get(key)
+                && !matches_schema(prop, item)
+            {
+                return false;
             }
         }
     }
     true
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn start_script(
     hub: &Hub,
     id: &str,
     summary: &Value,
     snapshot: &super::model::Graph,
-    request: &str,
+    _request: &str,
     from: Option<&str>,
     source: super::model::RunSource,
     payload: &str,
     scheduled_for: Option<i64>,
     key: &str,
 ) -> Result<Value> {
-    if let Some(node) = from {
-        if !snapshot.nodes.iter().any(|n| n.id == node && n.kind == super::model::NodeKind::Trigger) {
-            bail!("That step is not in this workflow");
-        }
+    if let Some(node) = from
+        && !snapshot.nodes.iter().any(|n| n.id == node && n.kind == super::model::NodeKind::Trigger)
+    {
+        bail!("That step is not in this workflow");
     }
     let run_id = new_id();
     let now = now_ms();

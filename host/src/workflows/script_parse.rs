@@ -17,10 +17,10 @@ use boa_ast::declaration::{Binding, Declaration, ExportDeclaration, LexicalDecla
 use boa_ast::expression::access::{PropertyAccess, PropertyAccessField};
 use boa_ast::expression::literal::{Literal, ObjectLiteral, PropertyDefinition};
 use boa_ast::expression::operator::binary::{ArithmeticOp, BinaryOp, RelationalOp};
-use boa_ast::expression::{Await, Call, Expression, Identifier};
+use boa_ast::expression::{Call, Expression, Identifier};
 use boa_ast::function::FormalParameterList;
 use boa_ast::property::PropertyName;
-use boa_ast::statement::{Block, If, Return, Statement};
+use boa_ast::statement::{If, Statement};
 use boa_ast::{ModuleItem, StatementListItem};
 use boa_interner::{Interner, Sym};
 use boa_parser::{Parser, Source};
@@ -29,6 +29,7 @@ use std::collections::{HashMap, HashSet};
 
 pub struct Meta {
     pub name: String,
+    #[allow(dead_code)]
     pub description: String,
     pub phases: Vec<String>,
 }
@@ -118,7 +119,7 @@ pub fn check(script: &str, bots: &impl Fn(&str) -> BotState) -> Result<Checked> 
     let module = parser
         .parse_module(&boa_ast::scope::Scope::new_global(), &mut interner)
         .map_err(|_| anyhow::anyhow!("This script couldn't be read"))?;
-    let mut forbidden = Forbid { interner: &interner, declared: HashSet::new(), bots, agents: Vec::new() };
+    let mut forbidden = Forbid { interner: &interner, declared: HashSet::new(), agents: Vec::new() };
     forbidden.module(&module)?;
     for (bot, schema) in &forbidden.agents {
         if !bot.is_empty() && !matches!(bots(bot), BotState::Ok) {
@@ -131,7 +132,7 @@ pub fn check(script: &str, bots: &impl Fn(&str) -> BotState) -> Result<Checked> 
     let meta = meta_of(&module, &interner)?;
     let body = function_body(&module, &interner)?;
     let hints = node_comments(script);
-    let kind = match static_body(&body, &interner, &hints) {
+    let kind = match static_body(body, &interner, &hints) {
         Some(mut steps) => {
             assemble_fix_tasks(&mut steps);
             Kind::Static(steps)
@@ -194,15 +195,17 @@ pub fn assemble(previous: &Graph, steps: &[Step]) -> Graph {
     }
     let mut condition: Option<String> = None;
     for (id, step, _) in &body {
-        if step.kind == NodeKind::Condition {
-            condition = Some(id.clone());
-        }
-        if let Some(cond) = &condition {
+        if let Some(cond) = &condition
+            && cond != id
+        {
             for input in &step.inputs {
                 if let Input::Branch(branch) = input {
                     edges.push(edge(cond, id, Some(*branch)));
                 }
             }
+        }
+        if step.kind == NodeKind::Condition {
+            condition = Some(id.clone());
         }
     }
     Graph { nodes, edges, strokes: previous.strokes.clone() }
@@ -211,7 +214,6 @@ pub fn assemble(previous: &Graph, steps: &[Step]) -> Graph {
 struct Forbid<'a> {
     interner: &'a Interner,
     declared: HashSet<String>,
-    bots: &'a dyn Fn(&str) -> BotState,
     agents: Vec<(String, Option<Value>)>,
 }
 
@@ -285,7 +287,7 @@ impl Forbid<'_> {
                         }
                     }
                 }
-                _ => bail!("This script uses \"Function\", which isn't available"),
+                StatementListItem::Declaration(_) => bail!("This script uses \"Function\", which isn't available"),
             }
         }
         Ok(())
@@ -342,14 +344,11 @@ impl Forbid<'_> {
 
     fn expr(&mut self, expr: &Expression) -> Result<()> {
         match expr {
-            Expression::Identifier(id) => self.ident(id),
-            Expression::Literal(_) => Ok(()),
+            Expression::Identifier(id) => self.ident(*id),
             Expression::RegExpLiteral(_) => bail!("This script uses \"RegExp\", which isn't available"),
             Expression::ArrayLiteral(array) => {
-                for element in array.as_ref() {
-                    if let Some(item) = element {
-                        self.expr(item)?;
-                    }
+                for item in array.as_ref().iter().flatten() {
+                    self.expr(item)?;
                 }
                 Ok(())
             }
@@ -418,10 +417,11 @@ impl Forbid<'_> {
             return Ok(());
         };
         self.expr(simple.target())?;
-        if let (Expression::Identifier(id), PropertyAccessField::Const(field)) = (simple.target(), simple.field()) {
-            if self.text(id.sym()) == "Math" && self.text(*field) == "random" {
-                bail!("This script uses \"Math.random\", which isn't available");
-            }
+        if let (Expression::Identifier(id), PropertyAccessField::Const(field)) = (simple.target(), simple.field())
+            && self.text(id.sym()) == "Math"
+            && self.text(*field) == "random"
+        {
+            bail!("This script uses \"Math.random\", which isn't available");
         }
         Ok(())
     }
@@ -445,7 +445,7 @@ impl Forbid<'_> {
         Ok(())
     }
 
-    fn ident(&mut self, id: &Identifier) -> Result<()> {
+    fn ident(&mut self, id: Identifier) -> Result<()> {
         let name = self.text(id.sym());
         if FORBIDDEN.contains(&name.as_str()) || name == "workflow" || name == "budget" {
             bail!("This script uses \"{name}\", which isn't available");
@@ -561,12 +561,15 @@ fn static_body(items: &[StatementListItem], interner: &Interner, hints: &[String
     let mut steps = Vec::new();
     let mut hint = 0usize;
     let mut names = HashSet::new();
-    if !static_items(items, interner, hints, &mut hint, &mut names, &mut steps, None) {
+    let mut gates = Vec::new();
+    let mut prev = None;
+    if !static_items(items, interner, hints, &mut hint, &mut names, &mut steps, None, &mut gates, &mut prev) {
         return None;
     }
     Some(steps)
 }
 
+#[allow(clippy::too_many_arguments)]
 fn static_items(
     items: &[StatementListItem],
     interner: &Interner,
@@ -575,6 +578,8 @@ fn static_items(
     names: &mut HashSet<String>,
     steps: &mut Vec<Step>,
     branch: Option<Branch>,
+    gates: &mut Vec<String>,
+    prev: &mut Option<String>,
 ) -> bool {
     for item in items {
         match item {
@@ -587,23 +592,23 @@ fn static_items(
                 let name = text(interner, id.sym());
                 let Some(init) = var.init() else { return false };
                 let id_hint = take_hint(hints, hint);
-                if !static_const(&name, init, interner, id_hint, names, steps, branch) {
+                if !static_const(&name, init, interner, id_hint, names, steps, branch, gates, prev) {
                     return false;
                 }
                 names.insert(name);
             }
             StatementListItem::Statement(Statement::Expression(expr)) => {
                 let id_hint = take_hint(hints, hint);
-                if !static_effect(expr, interner, id_hint, names, steps, branch) {
+                if !static_effect(expr, interner, id_hint, names, steps, branch, gates, prev) {
                     return false;
                 }
             }
             StatementListItem::Statement(Statement::If(stmt)) => {
-                if !static_if(stmt, interner, hints, hint, names, steps, branch) {
+                if !static_if(stmt, interner, hints, hint, names, steps, branch, gates, prev) {
                     return false;
                 }
             }
-            StatementListItem::Statement(Statement::Return(_)) => {}
+            StatementListItem::Statement(Statement::Return(_)) => return true,
             StatementListItem::Statement(Statement::Empty) => {}
             _ => return false,
         }
@@ -619,6 +624,7 @@ fn take_hint(hints: &[String], hint: &mut usize) -> Option<String> {
     id
 }
 
+#[allow(clippy::too_many_arguments)]
 fn static_const(
     name: &str,
     init: &Expression,
@@ -627,19 +633,26 @@ fn static_const(
     names: &HashSet<String>,
     steps: &mut Vec<Step>,
     branch: Option<Branch>,
+    gates: &mut Vec<String>,
+    prev: &mut Option<String>,
 ) -> bool {
     if let Some(text) = string_lit(init, interner) {
-        let mut inputs = Vec::new();
-        if let Some(branch) = branch {
-            inputs.push(Input::Branch(branch));
+        // A prompt has no incoming branch. That shape stays on the script runner.
+        if branch.is_some() {
+            return false;
         }
-        steps.push(Step {
-            hint,
-            kind: NodeKind::Prompt,
-            fields: field_map(&[("text", json_str(&text))]),
-            name: Some(name.to_owned()),
-            inputs,
-        });
+        record(
+            Step {
+                hint,
+                kind: NodeKind::Prompt,
+                fields: field_map(&[("text", json_str(&text))]),
+                name: Some(name.to_owned()),
+                inputs: Vec::new(),
+            },
+            steps,
+            gates,
+            prev,
+        );
         return true;
     }
     let Expression::Await(wait) = init else { return false };
@@ -658,14 +671,51 @@ fn static_const(
         inputs.push(Input::Branch(branch));
     }
     let task = task_of(&inputs);
-    steps.push(Step {
-        hint,
-        kind: NodeKind::Agent,
-        fields: field_map(&[("botId", json_str(&bot)), ("task", json_str(&task))]),
-        name: Some(name.to_owned()),
-        inputs,
-    });
+    record(
+        Step {
+            hint,
+            kind: NodeKind::Agent,
+            fields: field_map(&[("botId", json_str(&bot)), ("task", json_str(&task))]),
+            name: Some(name.to_owned()),
+            inputs,
+        },
+        steps,
+        gates,
+        prev,
+    );
     true
+}
+
+/// An approval waits for the step before it, and every later step waits for that approval.
+fn record(mut step: Step, steps: &mut Vec<Step>, gates: &mut Vec<String>, prev: &mut Option<String>) {
+    if step.kind == NodeKind::Approval
+        && !step.inputs.iter().any(|input| matches!(input, Input::Var(_)))
+        && let Some(name) = prev.clone()
+    {
+        step.inputs.insert(0, Input::Var(name));
+    }
+    if step.kind == NodeKind::Approval && step.name.is_none() {
+        step.name = Some(format!("__approval_{}", steps.len()));
+    }
+    let own = step.name.clone();
+    for gate in gates.iter() {
+        if own.as_deref() == Some(gate.as_str()) {
+            continue;
+        }
+        if !step.inputs.iter().any(|input| matches!(input, Input::Var(name) if name == gate)) {
+            step.inputs.push(Input::Var(gate.clone()));
+        }
+    }
+    if step.kind == NodeKind::Approval
+        && let Some(name) = &step.name
+        && !gates.iter().any(|gate| gate == name)
+    {
+        gates.push(name.clone());
+    }
+    if let Some(name) = step.name.clone() {
+        *prev = Some(name);
+    }
+    steps.push(step);
 }
 
 fn task_of(inputs: &[Input]) -> String {
@@ -714,7 +764,7 @@ fn text_input(expr: &Expression, interner: &Interner, names: &HashSet<String>) -
 fn fan_in(expr: &Expression, interner: &Interner, names: &HashSet<String>) -> Option<Vec<Input>> {
     let mut flat = Vec::new();
     flatten_plus(expr, &mut flat);
-    if flat.len() < 4 || !flat.len().is_multiple_of(2) && false {
+    if flat.len() < 4 || !flat.len().is_multiple_of(2) {
         return None;
     }
     let mut inputs = Vec::new();
@@ -781,6 +831,7 @@ fn label_only(expr: &Expression, interner: &Interner) -> bool {
     key.literal().and_then(|sym| interner.resolve_expect(sym).utf8()) == Some("label")
 }
 
+#[allow(clippy::too_many_arguments)]
 fn static_effect(
     expr: &Expression,
     interner: &Interner,
@@ -788,6 +839,8 @@ fn static_effect(
     names: &HashSet<String>,
     steps: &mut Vec<Step>,
     branch: Option<Branch>,
+    gates: &mut Vec<String>,
+    prev: &mut Option<String>,
 ) -> bool {
     let Expression::Await(wait) = expr else { return false };
     let Expression::Call(call) = wait.target() else { return false };
@@ -799,13 +852,18 @@ fn static_effect(
     }
     if name == "approval" && call.args().len() == 1 {
         let Some(question) = string_lit(&call.args()[0], interner) else { return false };
-        steps.push(Step {
-            hint,
-            kind: NodeKind::Approval,
-            fields: field_map(&[("question", json_str(&question))]),
-            name: None,
-            inputs,
-        });
+        record(
+            Step {
+                hint,
+                kind: NodeKind::Approval,
+                fields: field_map(&[("question", json_str(&question))]),
+                name: None,
+                inputs,
+            },
+            steps,
+            gates,
+            prev,
+        );
         return true;
     }
     if name == "output" && call.args().len() == 1 {
@@ -815,7 +873,7 @@ fn static_effect(
         if let Some(bot) = bot {
             fields.insert("botId".into(), json_str(&bot));
         }
-        steps.push(Step { hint, kind: NodeKind::Output, fields, name: None, inputs });
+        record(Step { hint, kind: NodeKind::Output, fields, name: None, inputs }, steps, gates, prev);
         return true;
     }
     false
@@ -847,6 +905,7 @@ fn output_spec(
     Some((target, bot, text_in?))
 }
 
+#[allow(clippy::too_many_arguments)]
 fn static_if(
     stmt: &If,
     interner: &Interner,
@@ -855,6 +914,8 @@ fn static_if(
     names: &mut HashSet<String>,
     steps: &mut Vec<Step>,
     branch: Option<Branch>,
+    gates: &mut Vec<String>,
+    prev: &mut Option<String>,
 ) -> bool {
     let Some((probe, op, value)) = condition(stmt.cond(), interner, names) else { return false };
     let id_hint = take_hint(hints, hint);
@@ -862,25 +923,69 @@ fn static_if(
     if let Some(branch) = branch {
         inputs.push(Input::Branch(branch));
     }
-    steps.push(Step {
-        hint: id_hint,
-        kind: NodeKind::Condition,
-        fields: field_map(&[("op", json_str(&op)), ("value", json_str(&value))]),
-        name: None,
-        inputs,
-    });
+    record(
+        Step {
+            hint: id_hint,
+            kind: NodeKind::Condition,
+            fields: field_map(&[("op", json_str(&op)), ("value", json_str(&value))]),
+            name: None,
+            inputs,
+        },
+        steps,
+        gates,
+        prev,
+    );
     let Statement::Block(yes) = stmt.body() else { return false };
-    if !static_items(yes.statement_list().statements(), interner, hints, hint, names, steps, Some(Branch::Yes)) {
+    let incoming_gates = gates.clone();
+    let incoming_prev = prev.clone();
+    let mut yes_gates = incoming_gates.clone();
+    let mut yes_prev = incoming_prev.clone();
+    if !static_items(
+        yes.statement_list().statements(),
+        interner,
+        hints,
+        hint,
+        names,
+        steps,
+        Some(Branch::Yes),
+        &mut yes_gates,
+        &mut yes_prev,
+    ) {
         return false;
     }
-    match stmt.else_node() {
-        Some(Statement::Block(no)) => {
-            static_items(no.statement_list().statements(), interner, hints, hint, names, steps, Some(Branch::No))
+    let mut no_gates = incoming_gates.clone();
+    let mut no_prev = incoming_prev;
+    let branched = match stmt.else_node() {
+        Some(Statement::Block(no)) => static_items(
+            no.statement_list().statements(),
+            interner,
+            hints,
+            hint,
+            names,
+            steps,
+            Some(Branch::No),
+            &mut no_gates,
+            &mut no_prev,
+        ),
+        Some(Statement::If(inner)) => {
+            static_if(inner, interner, hints, hint, names, steps, Some(Branch::No), &mut no_gates, &mut no_prev)
         }
-        Some(Statement::If(inner)) => static_if(inner, interner, hints, hint, names, steps, Some(Branch::No)),
-        None => true,
+        None => {
+            no_gates.clone_from(&yes_gates);
+            true
+        }
         _ => false,
+    };
+    if !branched {
+        return false;
     }
+    // An approval that exists on only one side cannot be a line on the canvas.
+    if yes_gates != no_gates {
+        return false;
+    }
+    *gates = yes_gates;
+    *prev = yes_prev;
+    true
 }
 
 fn condition(expr: &Expression, interner: &Interner, names: &HashSet<String>) -> Option<(String, String, String)> {
@@ -892,31 +997,32 @@ fn condition(expr: &Expression, interner: &Interner, names: &HashSet<String>) ->
             return Some((probe, "regex".into(), value));
         }
         let Expression::PropertyAccess(PropertyAccess::Simple(access)) = call.function() else { return None };
-        if let PropertyAccessField::Const(field) = access.field() {
-            if text(interner, *field) == "includes" && call.args().len() == 1 {
-                let probe = bound_name(access.target(), names, interner)?;
-                let value = string_lit(&call.args()[0], interner)?;
-                return Some((probe, "contains".into(), value));
-            }
+        if let PropertyAccessField::Const(field) = access.field()
+            && text(interner, *field) == "includes"
+            && call.args().len() == 1
+        {
+            let probe = bound_name(access.target(), names, interner)?;
+            let value = string_lit(&call.args()[0], interner)?;
+            return Some((probe, "contains".into(), value));
         }
     }
     let Expression::Binary(binary) = expr else { return None };
     if binary.op() != BinaryOp::Relational(RelationalOp::StrictEqual) {
         return None;
     }
-    if let Some(value) = string_lit(binary.rhs(), interner) {
-        if let Some(probe) = bound_name(binary.lhs(), names, interner) {
-            return Some((probe, "equals".into(), value));
-        }
+    if let Some(value) = string_lit(binary.rhs(), interner)
+        && let Some(probe) = bound_name(binary.lhs(), names, interner)
+    {
+        return Some((probe, "equals".into(), value));
     }
-    if string_lit(binary.rhs(), interner).as_deref() == Some("") {
-        if let Expression::Call(call) = binary.lhs() {
-            let Expression::PropertyAccess(PropertyAccess::Simple(access)) = call.function() else { return None };
-            let PropertyAccessField::Const(field) = access.field() else { return None };
-            if text(interner, *field) == "trim" && call.args().is_empty() {
-                let probe = bound_name(access.target(), names, interner)?;
-                return Some((probe, "empty".into(), String::new()));
-            }
+    if string_lit(binary.rhs(), interner).as_deref() == Some("")
+        && let Expression::Call(call) = binary.lhs()
+    {
+        let Expression::PropertyAccess(PropertyAccess::Simple(access)) = call.function() else { return None };
+        let PropertyAccessField::Const(field) = access.field() else { return None };
+        if text(interner, *field) == "trim" && call.args().is_empty() {
+            let probe = bound_name(access.target(), names, interner)?;
+            return Some((probe, "empty".into(), String::new()));
         }
     }
     None
@@ -1013,10 +1119,10 @@ fn validate_schema(value: &Value) -> Result<()> {
             bail!("This step's schema isn't supported");
         }
     }
-    if let Some(kind) = obj.get("type").and_then(Value::as_str) {
-        if !matches!(kind, "object" | "array" | "string" | "number" | "boolean" | "null") {
-            bail!("This step's schema isn't supported");
-        }
+    if let Some(kind) = obj.get("type").and_then(Value::as_str)
+        && !matches!(kind, "object" | "array" | "string" | "number" | "boolean" | "null")
+    {
+        bail!("This step's schema isn't supported");
     }
     if let Some(props) = obj.get("properties") {
         let props = props.as_object().ok_or_else(|| anyhow::anyhow!("This step's schema isn't supported"))?;
@@ -1046,6 +1152,9 @@ fn assemble_fix_tasks(steps: &mut [Step]) {
         let task = task.strip_suffix("\n\n").unwrap_or(&task).to_owned();
         if step.kind == NodeKind::Agent {
             step.fields.insert("task".into(), json_str(&task));
+        }
+        if step.kind == NodeKind::Output && !task.is_empty() {
+            step.fields.insert("text".into(), json_str(&task));
         }
         step.inputs.retain(
             |input| !matches!(input, Input::Var(name) if name.starts_with("__task__") || name.starts_with("__lit__")),

@@ -147,7 +147,7 @@ function WebhookFields({ node }: { node: Node }) {
 
   useEffect(() => {
     const hook = store.workflowDetail?.webhooks?.find((item) => item.nodeId === node.id)
-    setUrl(hook?.url ?? '')
+    setUrl(hook?.url || hook?.localUrl || '')
     setSecret(hook?.secret ?? null)
   }, [store.workflowDetail, node.id])
 

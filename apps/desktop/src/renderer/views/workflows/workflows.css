@@ -7,6 +7,20 @@
   background: var(--background);
 }
 
+.workflow-calls {
+  position: absolute;
+  right: 16px;
+  bottom: 16px;
+  z-index: 3;
+  width: 280px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  background: var(--sheet);
+  border-radius: var(--radius-l);
+}
+
 .workflow-viewport {
   position: relative;
   flex: 1;
@@ -70,7 +84,6 @@
   padding: 10px 16px;
   background: var(--sheet);
   border-radius: var(--radius-l);
-  box-shadow: 0 0 0 1px var(--outline);
   color: var(--text);
 }
 
@@ -145,7 +158,6 @@
   place-items: center;
   border-radius: 50%;
   background: var(--sheet);
-  box-shadow: 0 0 0 1px var(--outline);
   color: var(--secondary);
 }
 .workflow-port.in { left: 0; top: 50%; }

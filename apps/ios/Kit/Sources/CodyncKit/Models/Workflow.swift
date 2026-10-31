@@ -342,7 +342,8 @@ public struct WorkflowSummary: Codable, Identifiable, Hashable, Sendable {
 
 public struct WorkflowWebhook: Codable, Hashable, Sendable {
     public var nodeId: String
-    public var url: String
+    public var url: String?
+    public var localUrl: String?
     public var secret: String?
 }
 

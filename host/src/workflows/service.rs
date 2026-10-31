@@ -78,7 +78,7 @@ impl Workflows {
         triggers: Option<Graph>,
     ) -> Result<Value> {
         let _gate = self.gate.locked();
-        match store::save_script(&hub.store, id, base, script, triggers)? {
+        match store::save_script(&hub.store, id, base, script, triggers.as_ref())? {
             Saved::Conflict => {
                 Ok(json!({"ok": false, "conflict": true, "workflow": detail(hub, id, false)?["workflow"]}))
             }
@@ -232,10 +232,21 @@ impl Workflows {
         run::retry_one(hub, step_id)
     }
 
-    pub fn finish(&self, hub: &Hub, step_id: &str, output: Option<String>, error: Option<String>, stopped: bool) {
+    pub fn finish(
+        &self,
+        hub: &Hub,
+        step_id: &str,
+        output: Option<String>,
+        error: Option<String>,
+        stopped: bool,
+    ) -> bool {
         let _gate = self.gate.locked();
-        if let Err(error) = agent::settle(hub, step_id, output, error, stopped) {
-            tracing::warn!(step = step_id, error = format!("{error:#}"), "couldn't settle a workflow step");
+        match agent::settle(hub, step_id, output, error, stopped) {
+            Ok(keep) => keep,
+            Err(error) => {
+                tracing::warn!(step = step_id, error = format!("{error:#}"), "couldn't settle a workflow step");
+                false
+            }
         }
     }
 
@@ -292,24 +303,46 @@ fn recover(hub: &Arc<Hub>) -> Result<()> {
         Ok(rows)
     })?;
     for run_id in runs {
-        let effects = run::advance(hub, &run_id)?;
-        run::dispatch_pushes(hub, &effects);
-        for (bot, step) in effects.agents {
-            let slot = agent::session_slot(&step);
-            let key = crate::store::run_session_key(&bot, &slot);
-            let started: Option<i64> = hub.store.with_immediate(|tx| {
-                Ok(tx
-                    .query_row("SELECT started_at FROM workflow_steps WHERE id = ?1", [&step], |r| {
-                        r.get::<_, Option<i64>>(0)
-                    })
-                    .optional()?
-                    .flatten())
-            })?;
-            if started.is_some() && hub.store.kv_get(&key).is_none() {
-                let _ = agent::settle(hub, &step, None, Some("interrupted".into()), false);
-            } else if let Err(error) = hub.send_cmd(&bot, crate::agent::bot::Cmd::WorkflowStep { step_id: step }) {
-                tracing::warn!(error = format!("{error:#}"), "couldn't resume a workflow step");
-            }
+        let exec: String = hub.store.with_immediate(|tx| {
+            Ok(tx
+                .query_row("SELECT COALESCE(exec, 'graph') FROM workflow_runs WHERE id = ?1", [&run_id], |r| r.get(0))
+                .optional()?
+                .unwrap_or_else(|| "graph".into()))
+        })?;
+        let mut started = Vec::new();
+        if exec == "script" {
+            super::script_run::replay(hub, &run_id)?;
+        } else {
+            let effects = run::advance(hub, &run_id)?;
+            run::dispatch_pushes(hub, &effects);
+            started.extend(effects.agents);
+            run::dispatch_agents(hub, &run::Effects { agents: started.clone(), pushes: Vec::new() });
+        }
+        resume_open(hub, &run_id, &started)?;
+    }
+    Ok(())
+}
+
+fn resume_open(hub: &Hub, run_id: &str, started: &[(String, String)]) -> Result<()> {
+    let open = hub.store.with_immediate(|tx| {
+        let mut st = tx.prepare(
+            "SELECT id, COALESCE(bot_id, ''), started_at FROM workflow_steps WHERE run_id = ?1 AND kind = 'agent' AND status = 'running'",
+        )?;
+        let rows = st
+            .query_map([run_id], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, Option<i64>>(2)?)))?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(rows)
+    })?;
+    for (step, bot, began) in open {
+        if bot.is_empty() || started.iter().any(|(_, id)| id == &step) {
+            continue;
+        }
+        let slot = agent::session_slot(&step);
+        let key = crate::store::run_session_key(&bot, &slot);
+        if began.is_some() && hub.store.kv_get(&key).is_none() {
+            let _ = agent::settle(hub, &step, None, Some("interrupted".into()), false);
+        } else if let Err(error) = hub.send_cmd(&bot, crate::agent::bot::Cmd::WorkflowStep { step_id: step }) {
+            tracing::warn!(error = format!("{error:#}"), "couldn't resume a workflow step");
         }
     }
     Ok(())
@@ -345,18 +378,22 @@ fn detail(hub: &Hub, id: &str, reveal: bool) -> Result<Value> {
         EditMode::ReadOnly => "readOnly",
     });
     summary["phases"] = json!(super::script::phases_of(summary["script"].as_str().unwrap_or("")));
-    summary["webhooks"] = json!(hooks::reveal(&hub.store, id, reveal)?);
+    let public = crate::remote::cloud::codync_url(hub)
+        .ok()
+        .map(|base| format!("{}/v1/hooks/{}", base.trim_end_matches('/'), hub.identity.computer_id()));
+    summary["webhooks"] =
+        json!(hooks::reveal(&hub.store, id, reveal, &format!("http://127.0.0.1:{}", hub.port), public.as_deref(),)?);
     Ok(json!({"workflow": summary}))
 }
 
 /// Restores a saved graph. The current one is kept as a `restore` version first.
 pub fn restore(workflows: &Workflows, hub: &Hub, id: &str, version: &str) -> Result<Value> {
     let _gate = workflows.gate.locked();
-    let graph = store::version_graph(&hub.store, id, version)?;
+    let saved = store::version_snapshot(&hub.store, id, version)?;
     let Some((summary, current)) = store::load(&hub.store, id)? else { bail!("This workflow was deleted") };
     let revision = summary["revision"].as_i64().unwrap_or(0);
     store::record_version(&hub.store, id, revision, super::model::VersionKind::Restore, &current)?;
-    match store::save(&hub.store, id, revision, &graph) {
+    match store::restore_saved(&hub.store, id, revision, &saved.graph, &saved.script) {
         Ok(Saved::Ok { .. }) => {
             workflows.changed();
             emit(hub, "graph", id, json!({}));

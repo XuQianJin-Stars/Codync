@@ -8,6 +8,7 @@ use std::collections::{HashMap, HashSet};
 
 #[derive(Clone, Debug)]
 pub struct Recorded {
+    #[allow(dead_code)]
     pub id: String,
     pub node_id: String,
     pub status: StepStatus,
@@ -35,12 +36,8 @@ pub fn next_actions(
     let mut attempts: HashMap<&str, i64> = HashMap::new();
     for step in steps {
         *attempts.entry(step.node_id.as_str()).or_insert(0) += 1;
-        let keep = latest.get(step.node_id.as_str()).is_none_or(|had: &&Recorded| {
-            step.ended_at > had.ended_at || (step.ended_at == had.ended_at && step.id > had.id)
-        });
-        if keep {
-            latest.insert(step.node_id.as_str(), step);
-        }
+        // Rows are in attempt order. An open attempt ends at 0 and still replaces the older one.
+        latest.insert(step.node_id.as_str(), step);
     }
     let incoming = |id: &str, looped: bool| {
         graph.edges.iter().filter(move |e| e.to == id && loops.contains(&e.id) == looped).collect::<Vec<_>>()
@@ -68,13 +65,20 @@ pub fn next_actions(
             continue;
         }
         let ins = incoming(id, false);
+        let gated: HashSet<&str> =
+            ins.iter().filter(|edge| edge.branch.is_some()).map(|edge| edge.from.as_str()).collect();
         let mut parts = Vec::new();
         for edge in &ins {
             let Some(source) = latest.get(edge.from.as_str()) else { continue };
             if source.status != StepStatus::Done {
                 continue;
             }
-            if edge.branch.is_some() && edge.branch != source.branch {
+            // A conditional line is the gate. A plain line from that same step cannot start the other branch.
+            if gated.contains(edge.from.as_str()) {
+                if edge.branch != source.branch {
+                    continue;
+                }
+            } else if edge.branch.is_some() && edge.branch != source.branch {
                 continue;
             }
             parts.push((edge_pos(graph, &edge.id), source.output.clone()));
@@ -244,5 +248,52 @@ mod tests {
         let loops = HashSet::from(["b>a:text".into()]);
         let next = next_actions(&graph, &steps, &scope, &loops);
         assert!(matches!(next.first(), Some(Action::Fail { error: "This step repeated too many times", .. })));
+    }
+
+    #[test]
+    fn an_open_attempt_replaces_an_older_done_one() {
+        let graph = Graph { nodes: vec![node("a", NodeKind::Agent)], edges: vec![], strokes: vec![] };
+        let scope = HashSet::from(["a".into()]);
+        let steps = vec![
+            Recorded {
+                id: "done".into(),
+                node_id: "a".into(),
+                status: StepStatus::Done,
+                output: "first".into(),
+                branch: None,
+                ended_at: 50,
+            },
+            Recorded {
+                id: "open".into(),
+                node_id: "a".into(),
+                status: StepStatus::Running,
+                output: String::new(),
+                branch: None,
+                ended_at: 0,
+            },
+        ];
+        let next = next_actions(&graph, &steps, &scope, &HashSet::new());
+        assert!(next.is_empty(), "the open attempt is still the latest one");
+    }
+
+    #[test]
+    fn a_plain_line_does_not_bypass_a_rejected_branch() {
+        let graph = Graph {
+            nodes: vec![node("c", NodeKind::Condition), node("o", NodeKind::Output)],
+            edges: vec![edge("c>o:text", "c", "o", None), edge("c.yes>o:text", "c", "o", Some(Branch::Yes))],
+            strokes: vec![],
+        };
+        let scope = HashSet::from(["c".into(), "o".into()]);
+        let steps = vec![Recorded {
+            id: "s".into(),
+            node_id: "c".into(),
+            status: StepStatus::Done,
+            output: "no".into(),
+            branch: Some(Branch::No),
+            ended_at: 1,
+        }];
+        let next = next_actions(&graph, &steps, &scope, &HashSet::new());
+        assert!(next.iter().any(|action| matches!(action, Action::Skip { node_id } if node_id == "o")));
+        assert!(!next.iter().any(|action| matches!(action, Action::Start { node_id, .. } if node_id == "o")));
     }
 }

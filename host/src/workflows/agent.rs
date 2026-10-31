@@ -122,7 +122,7 @@ pub fn mark_started(hub: &Hub, step_id: &str) -> Result<()> {
 }
 
 /// The actor finished. Only a step that is still running changes.
-pub fn settle(hub: &Hub, step_id: &str, output: Option<String>, error: Option<String>, stopped: bool) -> Result<()> {
+pub fn settle(hub: &Hub, step_id: &str, output: Option<String>, error: Option<String>, stopped: bool) -> Result<bool> {
     let status = if stopped {
         "stopped"
     } else if error.is_some() {
@@ -131,31 +131,43 @@ pub fn settle(hub: &Hub, step_id: &str, output: Option<String>, error: Option<St
         "done"
     };
     let now = now_ms();
-    let run: Option<String> = hub.store.with_immediate(|tx| {
+    let placed: Option<(Option<String>, String)> = hub.store.with_immediate(|tx| {
         tx.execute(
             "UPDATE workflow_steps SET status = ?2, output = ?3, error = ?4, ended_at = ?5, updated_at = ?5 WHERE id = ?1 AND status = 'running'",
             params![step_id, status, output, error, now],
         )?;
-        Ok(tx.query_row("SELECT run_id FROM workflow_steps WHERE id = ?1", [step_id], |r| r.get::<_, Option<String>>(0))?)
+        Ok(tx
+            .query_row("SELECT run_id, workflow_id FROM workflow_steps WHERE id = ?1", [step_id], |r| {
+                Ok((r.get::<_, Option<String>>(0)?, r.get::<_, String>(1)?))
+            })
+            .optional()?)
     })?;
-    if let Some(run_id) = run {
-        if super::script_run::is_script_run(&hub.store, &run_id) {
-            if status == "done" {
-                if let Some(retry) = schema_followup(hub, step_id, output.as_deref())? {
-                    let _ = hub.send_cmd(&retry, crate::agent::bot::Cmd::WorkflowStep { step_id: step_id.to_owned() });
-                    emit_step(hub, &run_id, step_id);
-                    return Ok(());
-                }
+    let Some((run, workflow)) = placed else { return Ok(false) };
+    let mut keep = false;
+    if let Some(run_id) = run.as_deref() {
+        if super::script_run::is_script_run(&hub.store, run_id) {
+            if status == "done"
+                && let Some(retry) = schema_followup(hub, step_id, output.as_deref())?
+            {
+                let _ = hub.send_cmd(&retry, crate::agent::bot::Cmd::WorkflowStep { step_id: step_id.to_owned() });
+                keep = true;
+            } else {
+                super::script_run::replay(hub, run_id)?;
             }
-            super::script_run::replay(hub, &run_id)?;
         } else {
-            let effects = run::advance(hub, &run_id)?;
+            let effects = run::advance(hub, run_id)?;
             run::dispatch_agents(hub, &effects);
             run::dispatch_pushes(hub, &effects);
         }
-        emit_step(hub, &run_id, step_id);
     }
-    Ok(())
+    hub.emit_workflow(json!({
+        "type": "workflow",
+        "change": "step",
+        "workflowId": workflow,
+        "runId": run,
+        "stepId": step_id,
+    }));
+    Ok(keep)
 }
 
 fn schema_followup(hub: &Hub, step_id: &str, output: Option<&str>) -> Result<Option<String>> {
@@ -193,23 +205,6 @@ fn schema_followup(hub: &Hub, step_id: &str, output: Option<&str>) -> Result<Opt
         Ok(())
     })?;
     Ok(Some(bot))
-}
-
-fn emit_step(hub: &Hub, run_id: &str, step_id: &str) {
-    let workflow: Option<String> = hub
-        .store
-        .with_immediate(|tx| {
-            tx.query_row("SELECT workflow_id FROM workflow_runs WHERE id = ?1", [run_id], |r| r.get(0))
-                .optional()
-                .map_err(anyhow::Error::from)
-        })
-        .ok()
-        .flatten();
-    if let Some(workflow) = workflow {
-        hub.emit_workflow(
-            json!({"type": "workflow", "change": "step", "workflowId": workflow, "runId": run_id, "stepId": step_id}),
-        );
-    }
 }
 
 pub fn session_slot(step_id: &str) -> String {

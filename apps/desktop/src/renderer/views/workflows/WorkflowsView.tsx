@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { Screen } from '@shared/analytics'
 import { Button } from '../../components/Controls'
 import { Dialog } from '../../components/Overlay'
-import { VStack } from '../../components/Stack'
+import { HStack, VStack } from '../../components/Stack'
 import { Text } from '../../components/Text'
 import { useModel } from '../../lib/observable'
 import { useTr } from '../../lib/use-language'
@@ -159,9 +159,12 @@ export function WorkflowsView({ focusId }: { focusId?: string | null }) {
 
   useEffect(() => {
     const run = store.workflowRun
-    if (!run || !followRef.current || run.id !== runIdRef.current) return
+    if (!run || !followRef.current) return
+    if (runIdRef.current && run.id !== runIdRef.current) return
+    runIdRef.current = run.id
     setLiveRun(run)
     setRuns((current) => upsertRun(current, run))
+    sync(selected, dirtyRef.current)
   }, [store.workflowRun])
 
   useEffect(() => () => store.setWorkflowSession(null), [store])
@@ -266,9 +269,18 @@ export function WorkflowsView({ focusId }: { focusId?: string | null }) {
     }
   }
 
-  const open = (id: string) => { hold.current = false; setNotice(null); setSelected(id) }
+  const open = (id: string) => {
+    const previous = selected
+    void (async () => {
+      if (previous && previous !== id && (await settle()) === 'failed') return
+      hold.current = false
+      setNotice(null)
+      setSelected(id)
+    })()
+  }
   const pinned = selected ? isWorkflowPinned(store.computer.id, selected) : false
   const stepMap = latestStepByNode(steps)
+  const calls = steps.filter((step) => step.nodeId.startsWith('call-') && !shown.nodes.some((node) => node.id === step.nodeId))
 
   return (
     <div className="workflows">
@@ -344,6 +356,23 @@ export function WorkflowsView({ focusId }: { focusId?: string | null }) {
           </VStack>
         </div>
       )}
+      {calls.length > 0 ? (
+        <div className="workflow-calls">
+          {calls.map((step) => (
+            <VStack key={step.id} gap={4}>
+              <Text weight="semibold">{step.title || step.kind}</Text>
+              {step.status === 'approval' ? (
+                <HStack gap={8}>
+                  <Button onClick={() => void decide(step.id, true)}>Approve</Button>
+                  <Button onClick={() => void decide(step.id, false)}>Reject</Button>
+                </HStack>
+              ) : (
+                <Text tone="secondary">{step.status}</Text>
+              )}
+            </VStack>
+          ))}
+        </div>
+      ) : null}
       <Dialog open={renaming} title="Rename" actions={[{ title: 'Rename', action: () => void rename() }]} onClose={() => setRenaming(false)}>
         <input className="workflow-input" data-autofocus aria-label="Name" value={name} onChange={(event) => setName(event.target.value)} />
       </Dialog>
@@ -356,8 +385,12 @@ export function WorkflowsView({ focusId }: { focusId?: string | null }) {
 
   async function saveScript() {
     if (!selected || !saver.current) return
+    const id = selected
+    const text = scriptText
+    if ((await settle()) !== 'ok' || !saver.current || selected !== id) return
     try {
-      const result = await saveWorkflowScript(await store.ready(), selected, saver.current.revision, scriptText)
+      const result = await saveWorkflowScript(await store.ready(), id, saver.current.revision, text)
+      if (selected !== id) return
       if (!result.ok) {
         adopt(result.workflow)
         setNotice('This workflow was edited somewhere else')
@@ -395,7 +428,8 @@ export function WorkflowsView({ focusId }: { focusId?: string | null }) {
   async function duplicate() {
     if (!selected || !summary) return
     try {
-      const { workflow } = await createWorkflow(await store.ready(), copyTitle(summary.title), cloneGraphNewIds(graphRef.current))
+      const script = source === 'script' ? scriptText : undefined
+      const { workflow } = await createWorkflow(await store.ready(), copyTitle(summary.title), cloneGraphNewIds(graphRef.current), script)
       store.upsertWorkflow(workflow)
       open(workflow.id)
     } catch (error) {

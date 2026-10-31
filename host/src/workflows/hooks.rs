@@ -100,10 +100,10 @@ fn recall(
         .optional()
         .map_err(anyhow::Error::from)
     })?;
-    Ok(row.map(|(status, reason, run_id)| match (status.as_str(), reason.as_deref()) {
-        ("started", _) => Ok(json!({"ok": true, "runId": run_id})),
-        (_, Some("busy")) => Err(Refused::Busy),
-        _ => Err(Refused::Invalid("event too large".into())),
+    Ok(row.and_then(|(status, reason, run_id)| match (status.as_str(), reason.as_deref()) {
+        ("started", _) => Some(Ok(json!({"ok": true, "runId": run_id}))),
+        (_, Some("busy")) => None,
+        _ => Some(Err(Refused::Invalid("event too large".into()))),
     }))
 }
 
@@ -119,7 +119,8 @@ fn remember(
     store.with_immediate(|tx| {
         tx.execute(
             "INSERT INTO workflow_webhook_receipts(id, workflow_id, node_id, delivery_id, status, reason, run_id, received_at) VALUES(?1,?2,?3,?4,?5,?6,?7,?8)
-             ON CONFLICT(workflow_id, node_id, delivery_id) DO NOTHING",
+             ON CONFLICT(workflow_id, node_id, delivery_id) DO UPDATE SET status = excluded.status, reason = excluded.reason, run_id = excluded.run_id, received_at = excluded.received_at
+             WHERE workflow_webhook_receipts.reason = 'busy'",
             params![super::model::new_id(), hook.workflow, hook.node, delivery, status, reason, run_id, now],
         )?;
         Ok(())
@@ -127,7 +128,13 @@ fn remember(
 }
 
 /// The secret and local url for one trigger, when the detail asks for them.
-pub fn reveal(store: &crate::store::Store, workflow: &str, reveal: bool) -> Result<Vec<serde_json::Value>> {
+pub fn reveal(
+    store: &crate::store::Store,
+    workflow: &str,
+    reveal: bool,
+    local_base: &str,
+    public_base: Option<&str>,
+) -> Result<Vec<serde_json::Value>> {
     store.with_immediate(|tx| {
         let mut st =
             tx.prepare("SELECT node_id, hook_id, secret FROM workflow_webhook_secrets WHERE workflow_id = ?1")?;
@@ -142,7 +149,11 @@ pub fn reveal(store: &crate::store::Store, workflow: &str, reveal: bool) -> Resu
         Ok(rows
             .into_iter()
             .map(|(node, hook, secret)| {
-                let mut item = json!({"nodeId": node, "url": format!("/hooks/workflows/{hook}")});
+                let mut item = json!({
+                    "nodeId": node,
+                    "url": public_base.map(|base| format!("{}/{}", base.trim_end_matches('/'), hook)),
+                    "localUrl": format!("{}/hooks/workflows/{hook}", local_base.trim_end_matches('/')),
+                });
                 if reveal {
                     item["secret"] = secret.into();
                 }
