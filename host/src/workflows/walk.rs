@@ -67,8 +67,21 @@ pub fn next_actions(
         let ins = incoming(id, false);
         let gated: HashSet<&str> =
             ins.iter().filter(|edge| edge.branch.is_some()).map(|edge| edge.from.as_str()).collect();
+        let order_unmet = ins.iter().any(|edge| {
+            edge.id.ends_with(":order")
+                && latest.get(edge.from.as_str()).is_none_or(|source| source.status != StepStatus::Done)
+        });
+        if order_unmet {
+            actions.push(Action::Skip { node_id: (*id).to_owned() });
+            continue;
+        }
         let mut parts = Vec::new();
+        let mut text_edges = 0;
         for edge in &ins {
+            if edge.id.ends_with(":order") {
+                continue;
+            }
+            text_edges += 1;
             let Some(source) = latest.get(edge.from.as_str()) else { continue };
             if source.status != StepStatus::Done {
                 continue;
@@ -84,7 +97,7 @@ pub fn next_actions(
             parts.push((edge_pos(graph, &edge.id), source.output.clone()));
         }
         parts.sort_by(|a, b| a.0.cmp(&b.0));
-        if !ins.is_empty() && parts.is_empty() {
+        if text_edges > 0 && parts.is_empty() {
             actions.push(Action::Skip { node_id: (*id).to_owned() });
             continue;
         }

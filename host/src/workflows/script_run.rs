@@ -52,6 +52,8 @@ struct Host {
     fatal: Option<String>,
     phase: Option<String>,
     output: Option<String>,
+    /// While a parallel or pipeline stage is starting, a cached failure must not stop the other calls.
+    defer_fatal: bool,
 }
 
 thread_local! {
@@ -63,6 +65,7 @@ thread_local! {
         fatal: None,
         phase: None,
         output: None,
+        defer_fatal: false,
     });
 }
 
@@ -142,8 +145,16 @@ fn load_calls(store: &crate::store::Store, run_id: &str) -> Result<HashMap<i64, 
 fn interpret(script: String, payload: String, calls: HashMap<i64, Call>) -> Result<Host> {
     let run = || {
         HOST.with(|host| {
-            *host.borrow_mut() =
-                Host { index: 0, calls, fresh: Vec::new(), notes: Vec::new(), fatal: None, phase: None, output: None };
+            *host.borrow_mut() = Host {
+                index: 0,
+                calls,
+                fresh: Vec::new(),
+                notes: Vec::new(),
+                fatal: None,
+                phase: None,
+                output: None,
+                defer_fatal: false,
+            };
         });
         let mut context =
             Context::builder().instructions_remaining(SCRIPT_FUEL).build().map_err(|e| anyhow::anyhow!("{e}"))?;
@@ -191,6 +202,7 @@ impl Host {
             fatal: self.fatal.clone(),
             phase: self.phase.clone(),
             output: self.output.clone(),
+            defer_fatal: false,
         }
     }
 }
@@ -346,22 +358,32 @@ fn js_parallel(_this: &JsValue, args: &[JsValue], context: &mut Context) -> JsRe
         note_fatal("Too many steps at once");
         return Err(JsNativeError::typ().with_message("Too many steps at once").into());
     }
-    let mut values = Vec::new();
+    if HOST.with(|host| host.borrow().fatal.is_some()) {
+        return Ok(pending_promise(context));
+    }
+    let mut called = Vec::new();
+    let defer = DeferFatal::start();
     for index in 0..length {
-        if HOST.with(|host| host.borrow().fatal.is_some()) {
-            break;
-        }
         let item = object.get(index, context)?;
         let Some(func) = item.as_object() else {
             note_fatal("This parallel didn't get a list of steps");
             break;
         };
-        let called = func.call(&JsValue::undefined(), &[], context)?;
+        called.push(func.call(&JsValue::undefined(), &[], context)?);
         let () = context.run_jobs();
-        let Some(value) = await_settled(called, context) else {
-            return Ok(pending_promise(context));
+    }
+    drop(defer);
+    let mut values = Vec::new();
+    let mut pending = false;
+    for value in called {
+        let Some(value) = await_settled(value, context) else {
+            pending = true;
+            continue;
         };
         values.push(value);
+    }
+    if pending {
+        return Ok(pending_promise(context));
     }
     Ok(boa_engine::object::builtins::JsArray::from_iter(values, context).into())
 }
@@ -390,17 +412,27 @@ fn js_pipeline(_this: &JsValue, args: &[JsValue], context: &mut Context) -> JsRe
             note_fatal("Too many stages");
             break;
         };
-        let mut next = Vec::new();
+        if HOST.with(|host| host.borrow().fatal.is_some()) {
+            break;
+        }
+        let mut called = Vec::new();
+        let defer = DeferFatal::start();
         for (index, value) in current.iter().enumerate() {
-            if HOST.with(|host| host.borrow().fatal.is_some()) {
-                break;
-            }
-            let called = func.call(&JsValue::undefined(), &[value.clone(), JsValue::from(index)], context)?;
+            called.push(func.call(&JsValue::undefined(), &[value.clone(), JsValue::from(index)], context)?);
             let () = context.run_jobs();
-            let Some(settled) = await_settled(called, context) else {
-                return Ok(pending_promise(context));
+        }
+        drop(defer);
+        let mut next = Vec::new();
+        let mut pending = false;
+        for value in called {
+            let Some(settled) = await_settled(value, context) else {
+                pending = true;
+                continue;
             };
             next.push(settled);
+        }
+        if pending {
+            return Ok(pending_promise(context));
         }
         current = next;
     }
@@ -422,7 +454,7 @@ fn host_call(context: &mut Context, request: HostRequest) -> JsResult<JsValue> {
     let (promise, resolvers) = JsPromise::new_pending(context);
     let index = HOST.with(|host| {
         let mut host = host.borrow_mut();
-        if host.fatal.is_some() {
+        if host.fatal.is_some() && !host.defer_fatal {
             return Err("stop");
         }
         host.index += 1;
@@ -453,7 +485,10 @@ fn host_call(context: &mut Context, request: HostRequest) -> JsResult<JsValue> {
             resolvers.resolve.call(&JsValue::undefined(), &[value], context)?;
         } else if status == "failed" || status == "stopped" {
             let message = error.unwrap_or_else(|| "This workflow's script didn't finish".into());
-            note_fatal(&message);
+            let defer = HOST.with(|host| host.borrow().defer_fatal);
+            if !defer {
+                note_fatal(&message);
+            }
             resolvers.reject.call(&JsValue::undefined(), &[js_string!(message).into()], context)?;
         }
         return Ok(promise.into());
@@ -495,6 +530,22 @@ fn typed_value(context: &mut Context, output: &str, schema: Option<&str>) -> JsV
     js_string!(output).into()
 }
 
+/// Keeps a cached failure from stopping the other calls in the same parallel or pipeline stage.
+struct DeferFatal;
+
+impl DeferFatal {
+    fn start() -> Self {
+        HOST.with(|host| host.borrow_mut().defer_fatal = true);
+        Self
+    }
+}
+
+impl Drop for DeferFatal {
+    fn drop(&mut self) {
+        HOST.with(|host| host.borrow_mut().defer_fatal = false);
+    }
+}
+
 fn await_settled(value: JsValue, context: &mut Context) -> Option<JsValue> {
     let Some(object) = value.as_object() else { return Some(value) };
     let Ok(promise) = JsPromise::from_object(object.clone()) else { return Some(value) };
@@ -527,11 +578,19 @@ fn js_len(value: f64) -> usize {
 fn apply(hub: &Hub, run: &RunInfo, host: Host) -> Result<()> {
     let mut effects = Effects { agents: Vec::new(), pushes: Vec::new() };
     let now = now_ms();
+    let mut output_error: Option<String> = None;
     for fresh in &host.fresh {
         let step = new_id();
         let node = format!("call-{}", fresh.index);
+        let missing_chat = fresh.kind == "output"
+            && fresh.fail.is_none()
+            && OutputTarget::parse(Some(&fresh.target)).is_chat()
+            && !matches!(store::bot_state(&hub.store, fresh.bot.trim()), BotState::Ok);
         let (status, output, error) = if let Some(fail) = &fresh.fail {
             ("failed", None, Some(fail.clone()))
+        } else if missing_chat {
+            output_error = Some("Choose a bot for this step".into());
+            ("failed", None, Some("Choose a bot for this step".into()))
         } else if fresh.kind == "output" {
             ("done", Some(clip(&fresh.text, MAX_TEXT)), None)
         } else if fresh.kind == "approval" {
@@ -579,8 +638,16 @@ fn apply(hub: &Hub, run: &RunInfo, host: Host) -> Result<()> {
             json!({"type": "workflow", "change": "phase", "workflowId": run.workflow, "runId": run.id, "phase": phase}),
         );
     }
-    if let Some(message) = host.fatal {
-        finish(hub, run, "failed", Some(message), None)?;
+    let failed = host.fatal.clone().or(output_error);
+    let busy =
+        host.fresh.iter().any(|fresh| fresh.fail.is_none() && (fresh.kind == "agent" || fresh.kind == "approval"))
+            || waiting(&hub.store, &run.id)?;
+    if let Some(message) = failed {
+        if busy {
+            set_status(hub, &run.id, "running")?;
+        } else {
+            finish(hub, run, "failed", Some(message), None)?;
+        }
     } else if host.fresh.iter().any(|f| f.kind == "approval" && f.fail.is_none()) {
         set_status(hub, &run.id, "approval")?;
     } else if host.fresh.iter().any(|f| f.kind == "agent" && f.fail.is_none()) || waiting(&hub.store, &run.id)? {
@@ -615,11 +682,12 @@ fn deliver_output(
     effects: &mut Effects,
 ) -> Result<()> {
     if OutputTarget::parse(Some(target)).is_chat() {
-        if matches!(store::bot_state(&hub.store, bot), BotState::Ok) {
-            let turn = hub.store.max_turn(bot) + 1;
-            let data = json!({"text": text, "workflowId": run.workflow, "runId": run.id, "stepId": step, "notice": "workflow-output"});
-            hub.add_entry_once(&format!("workflow-output-{step}"), &Lane::main(bot), EntryKind::Notice, turn, &data)?;
+        if !matches!(store::bot_state(&hub.store, bot), BotState::Ok) {
+            bail!("Choose a bot for this step");
         }
+        let turn = hub.store.max_turn(bot) + 1;
+        let data = json!({"text": text, "workflowId": run.workflow, "runId": run.id, "stepId": step, "notice": "workflow-output"});
+        hub.add_entry_once(&format!("workflow-output-{step}"), &Lane::main(bot), EntryKind::Notice, turn, &data)?;
         return Ok(());
     }
     if let Some(anchor) =

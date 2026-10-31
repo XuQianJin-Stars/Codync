@@ -68,7 +68,8 @@ struct WorkflowEditorView: View {
                     onChange: { replace($0) },
                     onReveal: { await revealWebhook() },
                     onRotate: { await rotateWebhook(route.id) },
-                    workflowId: workflowId
+                    workflowId: workflowId,
+                    prepare: { await flushForRun() }
                 )
             }
         }
@@ -392,17 +393,29 @@ struct WorkflowEditorView: View {
     private func flush() {
         saveTask?.cancel()
         guard dirty, mode != .readOnly else { return }
-        Task { await saveNow() }
+        Task { _ = await saveNow() }
     }
 
-    private func saveNow() async {
+    /// Writes the open draft before a single step runs. A string is why that step must wait.
+    private func flushForRun() async -> String? {
+        saveTask?.cancel()
+        while saving {
+            pending = true
+            try? await Task.sleep(for: .milliseconds(20))
+        }
+        guard dirty else { return nil }
+        if await saveNow() { return nil }
+        return error ?? "This workflow was edited somewhere else"
+    }
+
+    private func saveNow() async -> Bool {
         if saving {
             pending = true
-            return
+            return false
         }
         saving = true
         defer { saving = false }
-        guard let client = model.client else { return }
+        guard let client = model.client else { return false }
         repeat {
             pending = false
             let snapshot = graph
@@ -412,7 +425,7 @@ struct WorkflowEditorView: View {
                 if result.isConflict {
                     apply(result.workflow, conflict: true)
                     await loadSchedules()
-                    return
+                    return false
                 }
                 baseRevision = result.revision ?? result.workflow.revision
                 title = result.workflow.title
@@ -421,11 +434,12 @@ struct WorkflowEditorView: View {
                 if graph != snapshot { pending = true }
             } catch {
                 self.error = error.localizedDescription
-                return
+                return false
             }
         } while pending
         dirty = false
         model.setWorkflowGraphDirty(workflowId, false)
+        return true
     }
 
     private func stopEditing() {

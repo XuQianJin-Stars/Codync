@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { isGroup } from '@shared/models'
 import { BotAvatar } from '../../components/Avatar'
 import { ChipChoice, ChoicePicker, IconButton, SegmentedChoice } from '../../components/Controls'
@@ -93,6 +93,9 @@ function ScheduleFields({ node, readOnly, onChange }: { node: Node; readOnly: bo
   const [draft, setDraft] = useState<RoutineScheduleDraft | null>(null)
   const [preview, setPreview] = useState<RoutineSchedulePreview | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const request = useRef(0)
+  const nodeRef = useRef(node)
+  nodeRef.current = node
 
   useEffect(() => {
     let cancel = false
@@ -118,16 +121,20 @@ function ScheduleFields({ node, readOnly, onChange }: { node: Node; readOnly: bo
     if (!draft || readOnly) return
     const next = { ...draft, ...change, kind: 'cron' }
     setDraft(next)
+    const token = ++request.current
     void (async () => {
       try {
         const result = await (await store.ready()).call<RoutineSchedulePreview>('routineSchedule', { draft: next })
+        if (token !== request.current) return
+        const current = nodeRef.current
+        if (current.fields.trigger !== 'schedule') return
         setPreview(result)
         setError(null)
         const cron = result.triggers.find((trigger) => trigger.type === 'cron')
         if (!cron?.expression || !cron.timeZone) return
-        onChange({ ...node, fields: { ...node.fields, trigger: 'schedule', timezone: cron.timeZone }, schedule: { type: 'cron', expression: cron.expression, timeZone: cron.timeZone } })
+        onChange({ ...current, fields: { ...current.fields, trigger: 'schedule', timezone: cron.timeZone }, schedule: { type: 'cron', expression: cron.expression, timeZone: cron.timeZone } })
       } catch (cause) {
-        setError(errorText(cause))
+        if (token === request.current) setError(errorText(cause))
       }
     })()
   }

@@ -102,7 +102,7 @@ export function duplicateNodes(graph: Graph, ids: Set<string>, offset = SNAP * 2
     const from = map.get(edge.from)
     const to = map.get(edge.to)
     if (!from || !to) return []
-    return [{ ...edge, id: edgeId(from, to, edge.branch), from, to }]
+    return [{ ...edge, id: edgeId(from, to, edge.branch, edge.id.endsWith(':order')), from, to }]
   })
   return { graph: { ...graph, nodes: [...graph.nodes, ...copies], edges: [...graph.edges, ...edges] }, ids: [...map.values()] }
 }

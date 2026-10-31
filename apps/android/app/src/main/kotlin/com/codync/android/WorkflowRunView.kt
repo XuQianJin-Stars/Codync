@@ -25,17 +25,25 @@ import com.codync.android.core.stepStatusLabel
 import com.codync.android.core.stepTitle
 import com.codync.android.design.*
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 
 @Composable internal fun WorkflowRunsView(state: AppState, store: AppStore, id: String, back: () -> Unit, open: (String) -> Unit) {
-    var limit by remember(id) { mutableStateOf(20) }
     var runs by remember(id) { mutableStateOf<List<com.codync.android.core.WorkflowRunSummary>>(emptyList()) }
     var hasMore by remember(id) { mutableStateOf(false) }
     var error by remember(id) { mutableStateOf<String?>(null) }
-    LaunchedEffect(id, limit, state.workflowTick) {
+    var cursor by remember(id) { mutableStateOf<com.codync.android.core.WorkflowRunSummary?>(null) }
+    var stamp by remember(id) { mutableStateOf(0) }
+    LaunchedEffect(id, state.workflowTick) {
+        cursor = null
+        stamp++
+    }
+    LaunchedEffect(id, stamp, cursor) {
+        val before = cursor
         try {
-            val page = store.workflowRuns(id, limit)
-            runs = page.runs
+            val page = store.workflowRuns(id, 20, before)
+            ensureActive()
+            runs = if (before == null) page.runs else (runs + page.runs).distinctBy { it.id }
             hasMore = page.hasMore
             error = null
         } catch (cancelled: CancellationException) { throw cancelled }
@@ -50,7 +58,7 @@ import kotlinx.coroutines.launch
                     Text(workflowRunLine(run.status, run.startedAt, run.endedAt), style = Type.footnote, color = Palette.secondary)
                 }
             }
-            if (hasMore) LinkButton("Show older runs") { limit += 20 }
+            if (hasMore) LinkButton("Show older runs") { runs.lastOrNull()?.let { cursor = it } }
         }
     }
 }

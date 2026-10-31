@@ -170,9 +170,11 @@ impl App {
 
     pub(super) fn workflow_started(&mut self, v: &Value) {
         let Some(run) = v.get("run").cloned() else { return };
-        let workflow = text(&run, "workflowId");
         for overlay in &mut self.overlays {
             if let Overlay::Workflows(sheet) = overlay {
+                let named = text(&run, "workflowId");
+                let workflow =
+                    if named.is_empty() { sheet.open_id().map(|(id, _)| id).unwrap_or_default() } else { named };
                 sheet.page =
                     WorkflowPage::Run(Box::new(WorkflowRun { workflow, run: Some(run), cursor: 0, output: false }));
                 return;

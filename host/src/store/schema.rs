@@ -143,13 +143,38 @@ fn migrate_6(c: &Connection) -> Result<()> {
 }
 
 fn migrate_7(c: &Connection) -> Result<()> {
+    if table_exists(c, "workflows")? {
+        c.execute("INSERT INTO kv(k, v) VALUES('schema', '7') ON CONFLICT(k) DO UPDATE SET v = '7'", [])?;
+        return Ok(());
+    }
     c.execute_batch(include_str!("schema_7.sql"))?;
     Ok(())
 }
 
 fn migrate_8(c: &Connection) -> Result<()> {
+    if column_exists(c, "source")? {
+        c.execute("INSERT INTO kv(k, v) VALUES('schema', '8') ON CONFLICT(k) DO UPDATE SET v = '8'", [])?;
+        return Ok(());
+    }
     c.execute_batch(include_str!("schema_8.sql"))?;
     Ok(())
+}
+
+fn table_exists(c: &Connection, name: &str) -> Result<bool> {
+    Ok(c.query_row("SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?1", [name], |row| {
+        row.get::<_, i64>(0)
+    })? > 0)
+}
+
+fn column_exists(c: &Connection, column: &str) -> Result<bool> {
+    let mut statement = c.prepare("SELECT name FROM pragma_table_info('workflows')")?;
+    let names = statement.query_map([], |row| row.get::<_, String>(0))?;
+    for name in names {
+        if name? == column {
+            return Ok(true);
+        }
+    }
+    Ok(false)
 }
 
 impl Store {

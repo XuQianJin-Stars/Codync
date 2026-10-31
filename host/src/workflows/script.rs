@@ -318,6 +318,17 @@ pub fn edge(from: &str, to: &str, branch: Option<Branch>) -> Edge {
     Edge { id: format!("{from}>{to}:text"), from: from.to_owned(), to: to.to_owned(), port: PortType::Text, branch }
 }
 
+/// The later step waits for the earlier one. The line carries no text.
+pub fn order_edge(from: &str, to: &str) -> Edge {
+    Edge {
+        id: format!("{from}>{to}:order"),
+        from: from.to_owned(),
+        to: to.to_owned(),
+        port: PortType::Text,
+        branch: None,
+    }
+}
+
 pub fn field_map(pairs: &[(&str, Value)]) -> Map<String, Value> {
     pairs.iter().map(|(key, value)| ((*key).to_owned(), value.clone())).collect()
 }
@@ -364,6 +375,19 @@ mod tests {
         assert_eq!(field_str(&agent.fields, "botId"), Some("bot_abc"));
         assert!(applied.graph.edges.iter().any(|e| e.from == "t1" && e.to == "a1"));
         assert!(applied.graph.edges.iter().any(|e| e.from == "a1" && e.to == "o1"));
+    }
+
+    #[test]
+    fn an_approval_waits_without_copying_its_text() {
+        let script = "export const meta = { name: \"Ship\", description: \"\" }\nexport default async function ({ agent, approval, output }) {\n  const a = await agent(\"bot\", \"Review\", { label: \"Review\" })\n  await approval(\"Ship?\")\n  await output({ target: \"notify\", text: \"done\" })\n  return \"\"\n}\n";
+        let graph = Graph { nodes: vec![manual("t")], edges: Vec::new(), strokes: Vec::new() };
+        let applied = prepare(script, &graph, "", &|_| BotState::Ok).unwrap();
+        let output = applied.graph.nodes.iter().find(|node| node.kind == NodeKind::Output).unwrap();
+        let approval = applied.graph.nodes.iter().find(|node| node.kind == NodeKind::Approval).unwrap();
+        assert_eq!(field_str(&output.fields, "text"), Some("done"));
+        let into_output: Vec<_> = applied.graph.edges.iter().filter(|edge| edge.to == output.id).collect();
+        assert!(into_output.iter().any(|edge| edge.from == approval.id && edge.id.ends_with(":order")));
+        assert!(into_output.iter().all(|edge| edge.id.ends_with(":order") || edge.from != approval.id));
     }
 
     #[test]

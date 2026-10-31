@@ -222,7 +222,7 @@ export function WorkflowCanvas({ workflowId, graph, readOnly, scripted, ready, s
       const from = map.get(edge.from)
       const to = map.get(edge.to)
       if (!from || !to) return []
-      return [{ ...edge, id: edgeId(from, to, edge.branch), from, to }]
+      return [{ ...edge, id: edgeId(from, to, edge.branch, edge.id.endsWith(':order')), from, to }]
     })
     commit({ ...graphRef.current, nodes: [...graphRef.current.nodes, ...nodes], edges: [...graphRef.current.edges, ...edges] })
     setSelected(new Set(nodes.map((node) => node.id)))

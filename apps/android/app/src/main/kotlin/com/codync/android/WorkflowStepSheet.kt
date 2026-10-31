@@ -43,6 +43,7 @@ import com.codync.android.design.*
 import com.kyant.shapes.RoundedRectangle
 import java.time.ZoneId
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 
 @Composable internal fun WorkflowStepSheet(store: AppStore, state: AppState, workflowId: String, node: WorkflowNode, webhooks: List<WorkflowWebhook>,
@@ -96,6 +97,8 @@ import kotlinx.coroutines.launch
         if (!touched) return@LaunchedEffect
         try {
             val preview = store.routineSchedule(draft)
+            ensureActive()
+            if (node.fields.field("trigger") != "schedule") return@LaunchedEffect
             val cron = preview.triggers.firstOrNull { it.field("type") == "cron" } ?: return@LaunchedEffect
             val zone = cron.field("timeZone").orEmpty()
             val expression = cron.field("expression").orEmpty()

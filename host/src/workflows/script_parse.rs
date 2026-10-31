@@ -8,7 +8,7 @@
     clippy::enum_glob_use
 )]
 
-use super::{edge, field_map, json_str, node};
+use super::{edge, field_map, json_str, node, order_edge};
 use crate::workflows::graph::BotState;
 use crate::workflows::limits::{MAX_DESCRIPTION, MAX_PHASE_TITLE, MAX_PHASES, MAX_SCRIPT_BYTES, MAX_TITLE};
 use crate::workflows::model::{Branch, Graph, Node, NodeKind};
@@ -55,6 +55,8 @@ pub struct Step {
 enum Input {
     Args,
     Var(String),
+    /// The step runs after `name` finishes. The earlier step's text does not become this step's input.
+    Wait(String),
     Branch(Branch),
 }
 
@@ -182,6 +184,11 @@ pub fn assemble(previous: &Graph, steps: &[Step]) -> Graph {
                 Input::Var(name) => {
                     if let Some(from) = names.get(name.as_str()) {
                         edges.push(edge(from, id, None));
+                    }
+                }
+                Input::Wait(name) => {
+                    if let Some(from) = names.get(name.as_str()) {
+                        edges.push(order_edge(from, id));
                     }
                 }
                 Input::Branch(_) => {}
@@ -689,10 +696,10 @@ fn static_const(
 /// An approval waits for the step before it, and every later step waits for that approval.
 fn record(mut step: Step, steps: &mut Vec<Step>, gates: &mut Vec<String>, prev: &mut Option<String>) {
     if step.kind == NodeKind::Approval
-        && !step.inputs.iter().any(|input| matches!(input, Input::Var(_)))
+        && !step.inputs.iter().any(|input| matches!(input, Input::Var(_) | Input::Wait(_)))
         && let Some(name) = prev.clone()
     {
-        step.inputs.insert(0, Input::Var(name));
+        step.inputs.insert(0, Input::Wait(name));
     }
     if step.kind == NodeKind::Approval && step.name.is_none() {
         step.name = Some(format!("__approval_{}", steps.len()));
@@ -702,8 +709,8 @@ fn record(mut step: Step, steps: &mut Vec<Step>, gates: &mut Vec<String>, prev: 
         if own.as_deref() == Some(gate.as_str()) {
             continue;
         }
-        if !step.inputs.iter().any(|input| matches!(input, Input::Var(name) if name == gate)) {
-            step.inputs.push(Input::Var(gate.clone()));
+        if !step.inputs.iter().any(|input| matches!(input, Input::Var(name) | Input::Wait(name) if name == gate)) {
+            step.inputs.push(Input::Wait(gate.clone()));
         }
     }
     if step.kind == NodeKind::Approval

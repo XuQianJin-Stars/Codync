@@ -6,6 +6,8 @@ struct WorkflowSoloRun: View {
     let workflowId: String
     let nodeId: String
     let kind: WorkflowNodeKind
+    /// Saves the editor first. A non-nil string means the step must not start.
+    var prepare: () async -> String? = { nil }
 
     @Environment(BotStore.self) private var model
     @State private var running = false
@@ -41,6 +43,10 @@ struct WorkflowSoloRun: View {
             } catch {
                 self.error = error.localizedDescription
             }
+            return
+        }
+        if let message = await prepare() {
+            error = message
             return
         }
         do {

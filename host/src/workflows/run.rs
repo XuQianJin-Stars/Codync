@@ -743,6 +743,7 @@ pub fn run_detail(hub: &Hub, run_id: &str) -> Result<Value> {
     Ok(json!({
         "run": {
             "id": run.id,
+            "workflowId": run.workflow,
             "number": run.number,
             "source": run.source,
             "status": run.status,

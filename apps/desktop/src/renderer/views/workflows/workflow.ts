@@ -268,8 +268,9 @@ export function resizeLimit(kind: string): ResizeLimit {
   return { minWidth: 200, maxWidth: 640 }
 }
 
-export function edgeId(from: string, to: string, branch?: Branch | null) {
-  return branch ? `${from}.${branch}>${to}:text` : `${from}>${to}:text`
+export function edgeId(from: string, to: string, branch?: Branch | null, order = false) {
+  const port = order ? 'order' : 'text'
+  return branch ? `${from}.${branch}>${to}:${port}` : `${from}>${to}:${port}`
 }
 
 export function makeNode(kind: NodeKind, at: Point, id = newId()): Node {
@@ -304,7 +305,7 @@ export function cloneGraphNewIds(graph: Graph, titleIds: () => string = newId): 
     edges: graph.edges.map((edge) => {
       const from = map.get(edge.from) ?? edge.from
       const to = map.get(edge.to) ?? edge.to
-      return { ...edge, id: edgeId(from, to, edge.branch), from, to }
+      return { ...edge, id: edgeId(from, to, edge.branch, edge.id.endsWith(':order')), from, to }
     }),
     strokes: graph.strokes.map((stroke) => ({ ...structuredClone(stroke), id: titleIds() })),
   }

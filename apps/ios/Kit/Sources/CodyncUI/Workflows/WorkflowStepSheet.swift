@@ -9,9 +9,9 @@ struct WorkflowStepSheet: View {
     var onReveal: () async -> [WorkflowWebhook]
     var onRotate: () async -> String?
     var workflowId: String
+    var prepare: () async -> String? = { nil }
 
     @Environment(BotStore.self) private var model
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var draft: WorkflowNode
     @State private var schedule = RoutineScheduleDraft()
     @State private var scheduleReady = false
@@ -26,13 +26,15 @@ struct WorkflowStepSheet: View {
     @State private var rotating = false
 
     init(node: WorkflowNode, webhook: WorkflowWebhook?, onChange: @escaping (WorkflowNode) -> Void,
-         onReveal: @escaping () async -> [WorkflowWebhook], onRotate: @escaping () async -> String?, workflowId: String) {
+         onReveal: @escaping () async -> [WorkflowWebhook], onRotate: @escaping () async -> String?, workflowId: String,
+         prepare: @escaping () async -> String? = { nil }) {
         self.node = node
         self.webhook = webhook
         self.onChange = onChange
         self.onReveal = onReveal
         self.onRotate = onRotate
         self.workflowId = workflowId
+        self.prepare = prepare
         _draft = State(initialValue: node)
     }
 
@@ -40,11 +42,14 @@ struct WorkflowStepSheet: View {
         VStack(spacing: 0) {
             ModalHeader(WorkflowCopy.title(draft, botName: botName))
             ScrollView {
-                VStack(alignment: .leading, spacing: 18) {
-                    fields
-                }
-                .padding(20)
-                .frame(maxWidth: .infinity, alignment: .leading)
+                WorkflowStepFields(draft: draftBinding, webhook: webhook, workflowId: workflowId, bots: botChoices,
+                                   schedule: $schedule, checked: checked, preview: preview, previewError: previewError,
+                                   revealed: revealed, showKey: $showKey, copied: $copied, rotating: rotating,
+                                   offline: model.isOffline, onPickZone: { pickingZone = true },
+                                   onReveal: { Task { await reveal() } }, onRotate: { confirmRotate = true },
+                                   onTrigger: setTrigger, prepare: prepare)
+                    .padding(20)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
         .background(Palette.background)
@@ -62,199 +67,17 @@ struct WorkflowStepSheet: View {
         .task(id: schedule) { await checkSchedule() }
     }
 
-    @ViewBuilder private var fields: some View {
-        switch draft.kind {
-        case .trigger:
-            Field("When to run") {
-                ChoicePicker(selection: triggerKind, options: [
-                    (id: "manual", label: "Manual"), (id: "schedule", label: "Schedule"), (id: "webhook", label: "Webhook"),
-                ], fitsAvailableWidth: true)
-            }
-            if draft.string("trigger") == "schedule" { scheduleFields }
-            if draft.string("trigger") == "webhook" { webhookFields }
-        case .prompt:
-            Field("Prompt") { textField("text", axis: .vertical) }
-        case .agent:
-            Field("Agent") { botPicker }
-            Field("Task") { textField("task", axis: .vertical) }
-        case .condition:
-            Field("Condition") {
-                ChoicePicker(selection: opKind, options: [
-                    (id: "contains", label: "Contains"), (id: "equals", label: "Equals"),
-                    (id: "regex", label: "Matches"), (id: "empty", label: "Empty"),
-                ])
-            }
-            if draft.string("op") != "empty" {
-                let label = draft.string("op") == "equals" ? "Equals" : draft.string("op") == "regex" ? "Matches" : "Contains"
-                Field(label) { textField("value") }
-            }
-        case .approval:
-            Field("Question") { textField("question", axis: .vertical) }
-        case .output:
-            Field("Notification") {
-                ChoicePicker(selection: targetKind, options: [
-                    (id: "notify", label: "Notification"), (id: "chat", label: "Chat"),
-                ])
-            }
-            if draft.string("target") == "chat" {
-                Field("Chat") { botPicker }
-            }
-        default:
-            EmptyView()
-        }
-        WorkflowSoloRun(workflowId: workflowId, nodeId: draft.id, kind: draft.kind)
+    private var draftBinding: Binding<WorkflowNode> {
+        Binding(get: { draft }, set: commit)
     }
 
-    private var triggerKind: Binding<String> {
-        Binding(get: { draft.string("trigger").isEmpty ? "manual" : draft.string("trigger") }, set: setTrigger)
-    }
-
-    private var opKind: Binding<String> {
-        Binding(get: { draft.string("op").isEmpty ? "contains" : draft.string("op") }, set: { set("op", $0) })
-    }
-
-    private var targetKind: Binding<String> {
-        Binding(get: { draft.string("target").isEmpty ? "notify" : draft.string("target") }, set: { value in
-            var next = draft
-            next.setString("target", value, keepEmpty: true)
-            if value != "chat" { next.setString("botId", "") }
-            commit(next)
-        })
-    }
-
-    private var botPicker: some View {
-        let bots = model.bots.values.filter { !$0.isGroup }.sorted {
+    private var botChoices: [(id: String, label: String)] {
+        model.bots.values.filter { !$0.isGroup }.sorted {
             $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
-        }
-        let options = [(id: "", label: "Choose a bot")] + bots.map { (id: $0.id, label: $0.name) }
-        return ChoicePicker(selection: Binding(get: { draft.string("botId") }, set: { set("botId", $0) }), options: options, fitsAvailableWidth: true)
-    }
-
-    private var scheduleFields: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Field("Repeat") {
-                ChoicePicker(selection: Binding(get: { schedule.calendarStyle }, set: { style in
-                    let compiled = checked == schedule ? preview?.cronExpression : nil
-                    schedule = schedule.repeating(style, compiled: compiled)
-                }), options: RoutineScheduleDraft.repeatChoices)
-            }
-            switch schedule.calendarStyle {
-            case "hourly":
-                Field("At minute") {
-                    ChoicePicker(selection: $schedule.minute, options: (0..<60).map { (id: $0, label: String(format: ":%02d", $0)) })
-                }
-            case "daily", "weekdays":
-                timeField
-            case "weekly":
-                Field("On") {
-                    ChoicePicker(selection: $schedule.weekday,
-                                 options: [1, 2, 3, 4, 5, 6, 0].map { (id: $0, label: Calendar.current.standaloneWeekdaySymbols[$0]) })
-                }
-                timeField
-            case "custom":
-                Field("Cron") {
-                    TextField("Cron", text: $schedule.expression, prompt: Text(L10n.tr("0 9 * * 1-5")).foregroundStyle(Palette.secondary))
-                        .font(.body.monospaced())
-                        .autocorrectionDisabled()
-                        .workflowInput()
-                }
-            default:
-                EmptyView()
-            }
-            Field("Time zone") {
-                Button {
-                    pickingZone = true
-                } label: {
-                    HStack(spacing: 6) {
-                        Text(schedule.zone.isEmpty ? TimeZone.current.identifier : schedule.zone).lineLimit(1)
-                        Text(TimeZones.offset(schedule.zone.isEmpty ? TimeZone.current.identifier : schedule.zone))
-                            .foregroundStyle(Palette.secondary)
-                        Image(systemName: "chevron.down").font(.caption2.weight(.semibold)).foregroundStyle(Palette.secondary)
-                    }
-                    .foregroundStyle(Palette.text)
-                    .outlinedPill()
-                }
-                .buttonStyle(.plain)
-            }
-            if let previewError {
-                Text(L10n.tr(previewError)).font(.caption).foregroundStyle(Palette.danger)
-            } else if let preview, checked == schedule {
-                Text(preview.summary).font(.caption.weight(.medium))
-                if let next = preview.nextRunAt {
-                    Text(L10n.tr("Next \(Date(milliseconds: next).formatted(date: .abbreviated, time: .shortened))"))
-                        .font(.caption)
-                        .foregroundStyle(Palette.secondary)
-                }
-            }
-        }
-    }
-
-    private var timeField: some View {
-        Field("At") {
-            DatePicker("At", selection: $schedule.timeOfDay, displayedComponents: .hourAndMinute)
-                .labelsHidden()
-                .environment(\.timeZone, .gmt)
-        }
-    }
-
-    private var webhookFields: some View {
-        let hook = revealed.first { $0.nodeId == draft.id } ?? webhook
-        return VStack(alignment: .leading, spacing: 14) {
-            if let hook {
-                Field("URL") { hookValue(hook.url ?? hook.localUrl ?? "", copy: "url") }
-                Field("Key") {
-                    hookValue(showKey ? (hook.secret ?? "") : String(repeating: "•", count: 16), copy: "key") {
-                        IconButton(showKey ? "Hide key" : "Show key", systemImage: showKey ? "eye.slash" : "eye") {
-                            if hook.secret == nil {
-                                Task { await reveal() }
-                            } else {
-                                withAnimation(Motion.reduced(Motion.hover, reduceMotion)) { showKey.toggle() }
-                            }
-                        }
-                        IconButton("Replace key", systemImage: "arrow.triangle.2.circlepath") { confirmRotate = true }
-                            .disabled(rotating || model.isOffline)
-                    }
-                }
-            } else {
-                Text(L10n.tr("Loading")).font(.caption).foregroundStyle(Palette.secondary)
-            }
-        }
-    }
-
-    private func hookValue(_ text: String, copy: String, @ViewBuilder extra: () -> some View = { EmptyView() }) -> some View {
-        HStack(spacing: 8) {
-            Text(text.isEmpty ? " " : text)
-                .font(.callout.monospaced())
-                .lineLimit(2)
-                .truncationMode(.middle)
-                .textSelection(.enabled)
-                .frame(maxWidth: .infinity, alignment: .leading)
-            extra()
-            IconButton(copied == copy ? "Copied" : "Copy", systemImage: copied == copy ? "checkmark" : "doc.on.doc") {
-                let hook = revealed.first { $0.nodeId == draft.id } ?? webhook
-                let value = copy == "key" ? hook?.secret : (hook?.url ?? hook?.localUrl)
-                Pasteboard.copy(value)
-                withAnimation(Motion.reduced(Motion.hover, reduceMotion)) { copied = copy }
-            }
-        }
-        .padding(.vertical, 8)
-        .padding(.leading, 12)
-        .padding(.trailing, 6)
-        .background(Palette.bubbleUser, in: RoundedRectangle(cornerRadius: 12))
-    }
-
-    private func textField(_ key: String, axis: Axis = .horizontal) -> some View {
-        TextField("", text: Binding(get: { draft.string(key) }, set: { set(key, $0) }), axis: axis)
-            .workflowInput()
+        }.map { (id: $0.id, label: $0.name) }
     }
 
     private var botName: (String) -> String? {{ model.bots[$0]?.name }}
-
-    private func set(_ key: String, _ value: String) {
-        var next = draft
-        next.setString(key, value, keepEmpty: true)
-        commit(next)
-    }
 
     private func setTrigger(_ kind: String) {
         var next = draft
@@ -339,13 +162,5 @@ struct WorkflowStepSheet: View {
             }
             showKey = true
         }
-    }
-}
-
-private extension View {
-    func workflowInput() -> some View {
-        textFieldStyle(.plain)
-            .padding(12)
-            .background(Palette.bubbleUser, in: RoundedRectangle(cornerRadius: 12))
     }
 }

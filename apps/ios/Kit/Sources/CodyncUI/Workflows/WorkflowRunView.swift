@@ -164,7 +164,6 @@ struct WorkflowRunsList: View {
     @Environment(BotStore.self) private var model
     @State private var runs: [WorkflowRunSummary] = []
     @State private var hasMore = false
-    @State private var limit = 20
     @State private var opened: WorkflowRunRoute?
     @State private var error: String?
 
@@ -197,8 +196,8 @@ struct WorkflowRunsList: View {
                 }
                 if hasMore {
                     Button(L10n.tr("Show older runs")) {
-                        limit += 20
-                        Task { await reload() }
+                        guard let last = runs.last else { return }
+                        Task { await reload(before: (startedAt: last.startedAt, id: last.id)) }
                     }
                     .buttonStyle(.secondary)
                     .padding(.top, 8)
@@ -213,15 +212,20 @@ struct WorkflowRunsList: View {
         .navigationDestination(item: $opened) { route in
             WorkflowRunView(runId: route.id)
         }
-        .task { await reload() }
-        .onChange(of: model.workflowRunReload) { _, _ in Task { await reload() } }
+        .task { await reload(before: nil) }
+        .onChange(of: model.workflowRunReload) { _, _ in Task { await reload(before: nil) } }
     }
 
-    private func reload() async {
+    private func reload(before cursor: (startedAt: Int64, id: String)?) async {
         guard let client = model.client else { return }
         do {
-            let page = try await client.workflowRuns(workflowId, limit: limit)
-            runs = page.runs
+            let page = try await client.workflowRuns(workflowId, limit: 20, before: cursor)
+            if let cursor {
+                let seen = Set(runs.map(\.id))
+                runs.append(contentsOf: page.runs.filter { !seen.contains($0.id) && $0.id != cursor.id })
+            } else {
+                runs = page.runs
+            }
             hasMore = page.hasMore
             error = nil
         } catch {

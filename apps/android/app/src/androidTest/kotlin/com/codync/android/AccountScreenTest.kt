@@ -114,7 +114,7 @@ class AccountScreenTest {
         val state = fixture().copy(computers = listOf(computer))
         val online = paired(LinkState.Ready(HostRoute.Direct), listOf(Bot("hidden", "Hidden scout", hidden = true)))
         var paired = 0; var extensions = 0
-        compose.setContent { Hosted { ComputersView(state, listOf(online), accounts, { paired++ }, {}, { extensions++ }) } }
+        compose.setContent { Hosted { ComputersView(state, listOf(online), accounts, { paired++ }, {}, { extensions++ }, {}) } }
         compose.onNodeWithText("Computer management").assertIsDisplayed()
         compose.onNode(hasText(computer.name) and hasClickAction()).assertIsDisplayed()
         compose.onNodeWithText("1 bot · Wi-Fi/Tailscale").assertIsDisplayed()
@@ -157,7 +157,7 @@ class AccountScreenTest {
         val cloud = CloudComputer("account-computer", "Account computer", "account-key", online = true)
         val asked = mutableListOf<CloudComputer>()
         val state = mutableStateOf(fixture().copy(cloudComputers = listOf(cloud)))
-        compose.setContent { Hosted { ComputersView(state.value, emptyList(), viewModel(), {}, { asked.add(it) }, {}) } }
+        compose.setContent { Hosted { ComputersView(state.value, emptyList(), viewModel(), {}, { asked.add(it) }, {}, {}) } }
         compose.onNodeWithText("Online · In your account").assertIsDisplayed()
         compose.onNodeWithText("Ask for access").performClick()
         assertEquals(listOf(cloud), asked)
@@ -171,7 +171,7 @@ class AccountScreenTest {
         val asked = CloudComputer("asked-computer", "Asked computer", "asked-key", online = true)
         val other = CloudComputer("other-computer", "Other computer", "other-key", online = true)
         val state = fixture().copy(cloudComputers = listOf(asked, other), asking = setOf(asked.computerId))
-        compose.setContent { Hosted { ComputersView(state, emptyList(), viewModel(), {}, {}, {}) } }
+        compose.setContent { Hosted { ComputersView(state, emptyList(), viewModel(), {}, {}, {}, {}) } }
         val buttons = compose.onAllNodesWithText("Ask for access")
         buttons[0].assertIsNotEnabled()
         buttons[1].assertIsEnabled()
@@ -191,7 +191,7 @@ class AccountScreenTest {
         val state = fixture().copy(computers = listOf(computer), cloudComputers = listOf(cloud))
         val unreachable = paired(LinkState.Failed("This phone cannot reach the computer.", 403))
         var asked: CloudComputer? = null
-        compose.setContent { Hosted { ComputersView(state, listOf(unreachable), accounts, {}, { asked = it }, {}) } }
+        compose.setContent { Hosted { ComputersView(state, listOf(unreachable), accounts, {}, { asked = it }, {}, {}) } }
         compose.onNodeWithText("This phone cannot reach the computer.").assertIsDisplayed()
         compose.onNodeWithText("Ask for access").performClick()
         assertEquals(cloud, asked)
@@ -206,7 +206,7 @@ class AccountScreenTest {
         val replacement = CloudComputer("replacement", "New computer", "new-key", online = true)
         val state = fixture().copy(computers = listOf(computer), cloudComputers = listOf(old, replacement))
         var asked: CloudComputer? = null
-        compose.setContent { Hosted { ComputersView(state, listOf(paired(LinkState.Failed("Access revoked.", 403))), accounts, {}, { asked = it }, {}) } }
+        compose.setContent { Hosted { ComputersView(state, listOf(paired(LinkState.Failed("Access revoked.", 403))), accounts, {}, { asked = it }, {}, {}) } }
         compose.onAllNodesWithText("Ask for access")[1].assertIsEnabled().performClick()
         assertEquals(replacement, asked)
         compose.onNodeWithText("Remove this phone's computer to use this one", substring = true).assertDoesNotExist()
