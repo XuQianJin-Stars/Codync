@@ -21,7 +21,12 @@ pub struct InFlight(Mutex<HashMap<String, Slot>>);
 type Slot = Arc<OnceCell<Result<Value, String>>>;
 
 impl InFlight {
-    async fn get(&self, agent: &str, fetch: impl Future<Output = Result<Value>>) -> Result<Value> {
+    /// Forgets a cached catalog after its credentials change.
+    pub(crate) fn clear(&self, agent: &str) {
+        self.0.locked().remove(agent);
+    }
+
+    pub(crate) async fn get(&self, agent: &str, fetch: impl Future<Output = Result<Value>>) -> Result<Value> {
         let slot = self.0.locked().entry(agent.to_owned()).or_default().clone();
         let answer = slot
             .get_or_init(|| async {
@@ -36,6 +41,9 @@ impl InFlight {
 
 /// [`models`], shared with the asks for the same agent meanwhile.
 pub async fn shared_models(hub: &Hub, backend: &str) -> Result<Value> {
+    if backend == "imate" {
+        return super::imate::shared_models(hub).await;
+    }
     hub.model_lists.get(backend, models(&hub.store, backend)).await
 }
 

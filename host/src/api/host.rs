@@ -203,6 +203,8 @@ pub(super) async fn call(hub: &Arc<Hub>, caller: &Caller, method: &str, b: Value
             json!({"term": term})
         }
         "agentModels" => crate::agent::auth::shared_models(hub, str_arg(&b, "backend")?).await?,
+        "imateStatus" => crate::agent::auth::imate::status(hub.clone()).await?,
+        "imateSetToken" => crate::agent::auth::imate::set_token(hub.clone(), str_arg(&b, "token")?).await?,
         // A login profile's own sign-in state: `{signedIn, loginProfile}`, and the agent list it changed.
         "agentAuth" if b["loginProfile"].is_string() => {
             let id = str_arg(&b, "loginProfile")?;

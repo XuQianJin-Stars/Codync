@@ -7,6 +7,13 @@ released version's section; a version without one gets the PRs' "What's New: And
 else a generic "Bug fixes and improvements" line. Delete old sections.
 -->
 
+## 2.51.0
+### zh-Hant
+- 可在「擴充功能」新增 iMate 個人令牌，並把 iMate 數字同事加入為 Bot。
+
+### en-US
+- Add an iMate personal token in Extensions and use your iMate digital colleagues as bots.
+
 ## 2.50.0
 ### zh-Hant
 - 建立 Codync Cloud 雲端電腦改成在同一個畫面一步一步來：先選供應商（看得到在哪裡執行、要多少錢），再照著步驟到供應商網站建立金鑰並貼上，最後取名、建立。

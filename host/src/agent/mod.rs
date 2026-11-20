@@ -9,6 +9,7 @@ pub mod codex_app;
 pub mod config;
 pub mod fallback;
 pub mod gear;
+pub(crate) mod imate_bridge;
 pub mod login_profiles;
 pub mod modes;
 pub mod new_bot;
